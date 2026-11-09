@@ -270,7 +270,15 @@ def next_step(s, gid=None, target='ios'):
     if mac and g['id'] in s.get('queue', []):
         return dict(step='等待', who='ai', do=f's2armctl wait {g["id"]} --op build（或隔一会儿 {next_command}）', why='这款的 Mac 准备任务正在排队', **extra)
     if mac_ready:
-        if s.get('executionTask') or s.get('queue'):
+        execution_task = s.get('executionTask')
+        if execution_task and any(
+            t['id'] == execution_task and t['operation'] == 'launch'
+            and t.get('gameId') == g['id'] and t['state'] == 'running'
+            for t in s['tasks']
+        ):
+            return dict(step='运行中', who='human', do='请玩家查看 Mac 上的游戏窗口',
+                        why='这款游戏正在启动或运行', task=execution_task, **extra)
+        if execution_task or s.get('queue'):
             return dict(step='等待', who='ai', do=f'等当前任务结束后再 {next_command}', why='构建与游戏运行互斥', **extra)
         return dict(step='启动', who='ai', do=f's2armctl launch {g["id"]}', why='这款游戏的 Mac 版已准备好', **extra)
 

@@ -367,6 +367,31 @@ class NextTargetTests(unittest.TestCase):
         n = self.run_next(s, "g", "--target", "mac")
         self.assertEqual(n["do"], "s2armctl launch g")
 
+    def test_ready_mac_reports_own_running_launch(self):
+        launch = task("launch-g", "running", 1, game="g", operation="launch")
+        s = full_state(games=[game("g", "G", 1, ready=True)],
+                       tasks=[launch], executionTask=launch["id"])
+        n = self.run_next(s, "g", "--target", "mac")
+        self.assertEqual((n["step"], n["who"]), ("运行中", "human"))
+        self.assertEqual(n["task"], "launch-g")
+        self.assertEqual(n["do"], "请玩家查看 Mac 上的游戏窗口")
+
+    def test_ready_mac_waits_for_other_execution_tasks(self):
+        own_launch = task("launch-g", "running", 1, game="g", operation="launch")
+        busy_tasks = (
+            task("launch-other", "running", 2, game="other", operation="launch"),
+            task("ipa-g", "running", 2, game="g", operation="ipa"),
+            dict(own_launch, state="cancelling"),
+        )
+        for busy in busy_tasks:
+            with self.subTest(operation=busy["operation"], game=busy["gameId"], state=busy["state"]):
+                tasks = [busy] if busy["id"] == own_launch["id"] else [own_launch, busy]
+                s = full_state(games=[game("g", "G", 1, ready=True)],
+                               tasks=tasks, executionTask=busy["id"])
+                n = self.run_next(s, "g", "--target", "mac")
+                self.assertEqual((n["step"], n["who"]), ("等待", "ai"))
+                self.assertEqual(n["why"], "构建与游戏运行互斥")
+
     def test_ready_mac_waits_if_launcher_is_busy(self):
         for busy in ({"executionTask": "other-task"}, {"queue": ["other-game"]}):
             with self.subTest(busy=busy):
@@ -425,8 +450,8 @@ class NextTargetTests(unittest.TestCase):
         self.assertIn("--target mac", err.getvalue())
         call.assert_not_called()
 
-    def test_bad_target_fails_before_contacting_launcher(self):
-        for args in (["--target"], ["--target", "android"]):
+    def test_invalid_next_arguments_fail_before_contacting_launcher(self):
+        for args in (["--target"], ["--target", "android"], ["g", "extra"], ["--unknown"]):
             with self.subTest(args=args), \
                  mock.patch.object(sys, "argv", ["s2armctl", "next", *args]), \
                  mock.patch.object(ctl, "call") as call, contextlib.redirect_stderr(io.StringIO()), \
