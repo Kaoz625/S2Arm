@@ -7,6 +7,7 @@
 // (11-07): a game's Export opens ExportView in place of the library (platforms, options, start), and an export runs in
 // ExportSessionView (platform queue, steps, time left, per-platform results); the free-up-space sheet (FreeSpaceView) and
 // change library (JobSessionView, setup job) sit beside them.
+// Toolbar actions keep their ideal width and draw their own button backgrounds, without AppKit's shared glass background.
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -140,6 +141,7 @@ struct LauncherView: View {
                 }
                 .buttonStyle(LauncherSecondaryButtonStyle())
         }
+        .fixedSize(horizontal: true, vertical: false)   // 工具栏按完整文案测量，避免「添加游戏」在宽窗口里仍被压成「添加…」
         .padding(.trailing, 8)
         .labelStyle(.titleAndIcon)   // 工具栏里 Label 缺省只显示图标
         .tint(LauncherPalette.cream)
@@ -161,6 +163,7 @@ struct LauncherView: View {
                 guard id == Self.item else { return nil }
                 let item = NSToolbarItem(itemIdentifier: id)
                 item.view = host
+                item.isBordered = false   // 按钮已有自绘底色；不要再给整组套系统玻璃背景
                 return item
             }
         }
