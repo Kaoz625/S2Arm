@@ -23,12 +23,6 @@ static NSString *text(NSBundle *bundle, NSString *key, NSString *table, NSString
     lookups++;
     return [localized localizedStringForKey:key value:key table:table];
 }
-// Settings' Values/Titles display mapping: values outside the fixed list are
-// actual package metadata and must pass through. This does not emulate UIKit.
-static NSString *display(NSDictionary *spec, NSString *value, NSBundle *bundle, NSString *table, NSString *language) {
-    NSUInteger index=[spec[@"Values"] indexOfObject:value];
-    return index!=NSNotFound && index<[spec[@"Titles"] count]?text(bundle,spec[@"Titles"][index],table,language):value;
-}
 int main(int argc, char **argv) { @autoreleasepool {
     if(argc!=3) return 2;
     NSString *path=[NSString stringWithUTF8String:argv[1]], *hostPath=[NSString stringWithUTF8String:argv[2]];
@@ -49,6 +43,16 @@ int main(int argc, char **argv) { @autoreleasepool {
         @"S2AScalingFilter":@[@"Bilinear",@"Nearest"],@"S2AFrameRateLimit":@[@"30",@"60",@"120",@"0"]};
     NSDictionary *expected=@{@"Phone Gyro":@"手机陀螺仪",@"Docked Mode":@"主机模式",@"Anti-Aliasing":@"抗锯齿",@"Build ID":@"包号",
         @"1× (Native)":@"1×（原生）",@"Unlimited":@"不限",@"Unknown (shown after opening a game once)":@"未知（打开一次游戏后显示）"};
+    // settings.m publishes these localized statuses. Read each real table once;
+    // below we only check membership in the shipped fixed Values arrays.
+    NSMutableArray *statuses=[NSMutableArray array];
+    for(NSString *language in @[@"en",@"zh-Hans"]) {
+        for(NSString *status in @[@"about.mode.direct",@"about.mode.unrecorded",@"about.directLib.none",@"about.unknown"]) {
+            NSString *v=text(host,status,@"S2ArmHost",language);
+            check(v.length && ![v isEqual:status],[@"host fixed status exists " stringByAppendingString:status]);
+            if(v) [statuses addObject:v];
+        }
+    }
     NSMutableSet *seen=[NSMutableSet set]; unsigned readOnly=0, fields=0;
     for(NSDictionary *spec in specs) {
         NSString *key=spec[@"Key"];
@@ -73,19 +77,13 @@ int main(int argc, char **argv) { @autoreleasepool {
         if([spec[@"Type"] isEqual:@"PSTitleValueSpecifier"]) {
             readOnly++;
             check([spec[@"Values"] isEqual:@[@"unknown"]] && [spec[@"Titles"] isEqual:@[@"Unknown (shown after opening a game once)"]],@"main's fixed read-only unknown mapping");
-            check([display(spec,@"unknown",bundle,table,@"en") isEqual:@"Unknown (shown after opening a game once)"],@"English read-only prelaunch display");
-            check([display(spec,@"unknown",bundle,table,@"zh-Hans") isEqual:expected[@"Unknown (shown after opening a game once)"]],@"Chinese read-only prelaunch display");
-            for(NSString *language in @[@"en",@"zh-Hans"]) {
-                for(NSString *v in @[@"v0.1.9-abc123",@"2026-11-10T06:00:00Z",@"abc123def-0042"])
-                    check([display(spec,v,bundle,table,language) isEqual:v],@"actual version/build/time values pass through");
-                // settings.m publishes these four S2ArmHost keys using S2AL.
-                // Test their real tables as values, not the old PR's status map.
-                for(NSString *status in @[@"about.mode.direct",@"about.mode.unrecorded",@"about.directLib.none",@"about.unknown"]) {
-                    NSString *v=text(host,status,@"S2ArmHost",language);
-                    check(v.length && ![v isEqual:status],[@"host fixed status exists " stringByAppendingString:status]);
-                    check([display(spec,v,bundle,table,language) isEqual:v],@"published localized fixed status passes through");
-                }
-            }
+            NSString *title=[spec[@"Titles"] firstObject]?:@"";
+            check([text(bundle,title,table,@"en") isEqual:@"Unknown (shown after opening a game once)"],@"English fixed unknown title");
+            check([text(bundle,title,table,@"zh-Hans") isEqual:expected[@"Unknown (shown after opening a game once)"]],@"Chinese fixed unknown title");
+            for(NSString *v in @[@"v0.1.9-abc123",@"2026-11-10T06:00:00Z",@"abc123def-0042"])
+                check(![spec[@"Values"] containsObject:v],@"version/build/time metadata absent from fixed Values");
+            for(NSString *v in statuses)
+                check(![spec[@"Values"] containsObject:v],@"localized published status absent from fixed Values");
         }
     }
     check(seen.count==16 && readOnly==4,@"16 preferences and four read-only rows");
