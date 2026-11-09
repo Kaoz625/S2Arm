@@ -356,7 +356,7 @@ void s2a_diag_boot(void) {
     void s2a_diag_open_menu(void); s2a_diag_open_menu();
 }
 @end
-// 快捷菜单唯一入口：四指长按与手柄长按「+」（ios/controller.m menu_hold_check）都走这里；主线程调
+// 快捷菜单唯一入口：四指长按与手柄长按「+」/ Home（ios/controller.m menu_hold_check）都走这里；主线程调
 void s2a_diag_open_menu(void) {
     // Reuse this one hidden entry, including on iPad. Never stack a second menu
     // on a layout sheet, file picker, diagnostic prompt or sharing panel.

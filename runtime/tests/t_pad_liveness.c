@@ -78,8 +78,11 @@ int main(int argc, char **argv) {
     // ---- 接线：「-」/「+」不再被系统手势吃掉（Minus 延迟的真根因，与本 PR 的判活健壮性独立）----
     // 「-」用 Disabled：手势识别器完全不跑、输入直接给 app。AlwaysReceive 已废弃且语义是「同时给手势识别器」
     //   （真机现象：按 Minus 触发录屏），这里断言它一处都不许出现，防止有人改回去。
-    check(count_in(source, "preferredSystemGestureState = GCSystemGestureStateDisabled") == 1,
-          "「-」设 Disabled（手势不跑，输入直接给 app）");
+    check(count_in(source, "preferredSystemGestureState = GCSystemGestureStateDisabled") == 2,
+          "「-」与 Home 设 Disabled（手势不跑，输入直接给 app）");
+    // #276：Home 关掉系统手势（否则系统拿去开游戏面板），并放进扩展位 bit16 供长按开局内菜单
+    check(strstr(source, "pad.buttonHome.preferredSystemGestureState = GCSystemGestureStateDisabled") != NULL, "Home 设 Disabled");
+    check(strstr(source, "if (pad.buttonHome.isPressed) buttons |= 1u << 16;") != NULL, "Home 进扩展位 bit16");
     check(count_in(source, "GCSystemGestureStateAlwaysReceive") == 0,
           "没有再用已废弃的 AlwaysReceive（它语义是「同时给手势识别器」，会触发录屏）");
     check(count_in(source, "buttonMenu.preferredSystemGestureState") == 0,

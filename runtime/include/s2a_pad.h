@@ -14,7 +14,7 @@ int s2a_pad_has_controller(void);   // 当前生效的是实体手柄（触屏�
 // 屏幕被碰：连着实体手柄时改由触屏生效（虚拟按键要显示），返回 1 = 发生了切换
 int s2a_pad_prefer_touch(void);
 uint32_t s2a_pad_read(int32_t axes[4], s2a_pad_source *source);
-// 快捷菜单的手柄入口（情报 10-28：接外接手柄时只有四指长按能开菜单）：实体手柄「+」（bit10）每按下一次记一个序号；
+// 快捷菜单的手柄入口（情报 10-28：接外接手柄时只有四指长按能开菜单）：实体手柄「+」（bit10）或 Home（扩展位 bit16，#276）每按下一次记一个序号；
 //   按着时返回当前序号，没按着返回 0。iOS 记下新序号、1.5 秒后再问一次仍是它 = 一直按着没松，开菜单（ios/controller.m）
 uint64_t s2a_pad_plus_press(void);
 void s2a_pad_stick(float x, float y, int32_t axes[2]);

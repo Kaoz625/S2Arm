@@ -437,6 +437,7 @@ static void ble_status(ns2_status status, const char *message, void *context) {
         pad.dpad.left, pad.dpad.up, pad.dpad.right, pad.dpad.down};
     uint32_t buttons = 0;
     for (int i = 0; i < 16; i++) if (keys[i].isPressed) buttons |= 1u << i;
+    if (pad.buttonHome.isPressed) buttons |= 1u << 16;   // Home 放扩展位 bit16（同 NS2 手柄）：只用于长按开局内菜单（#276），pad.c 判完就截掉、不进游戏
     int32_t axes[4];
     s2a_pad_stick(pad.leftThumbstick.xAxis.value, pad.leftThumbstick.yAxis.value, axes);
     s2a_pad_stick(pad.rightThumbstick.xAxis.value, pad.rightThumbstick.yAxis.value, axes + 2);
@@ -463,6 +464,8 @@ static void ble_status(ns2_status status, const char *message, void *context) {
     GCExtendedGamepad *pad = next.extendedGamepad;
     if (@available(iOS 14.0, *)) {
         if (pad.buttonOptions) pad.buttonOptions.preferredSystemGestureState = GCSystemGestureStateDisabled;
+        // Home 同理（#276）：系统默认拿去开游戏面板 / 回主屏，关掉手势后输入给 App，长按 1.5 秒开局内设置（同长按「+」、四指长按）
+        if (pad.buttonHome) pad.buttonHome.preferredSystemGestureState = GCSystemGestureStateDisabled;
     }
     __weak S2AController *weakSelf = self;
     next.extendedGamepad.valueChangedHandler = ^(GCExtendedGamepad *pad, GCControllerElement *element) {
@@ -677,7 +680,7 @@ static void ble_status(ns2_status status, const char *message, void *context) {
 }
 @end
 
-// 长按「+」开快捷菜单（外接手柄时四指长按够不着屏幕）：每个新按下的序号交给 diag.m 计时复查（s2a_diag_menu_hold）
+// 长按「+」或 Home 开快捷菜单（外接手柄时四指长按够不着屏幕）：每个新按下的序号交给 diag.m 计时复查（s2a_diag_menu_hold）
 static void menu_hold_check(void) {
     static _Atomic uint64_t armed;
     uint64_t press = s2a_pad_plus_press();

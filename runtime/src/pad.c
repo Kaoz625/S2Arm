@@ -66,7 +66,8 @@ void s2a_pad_update(s2a_pad_source source, int connected, uint32_t buttons, cons
     if (touch_override && source != S2A_PAD_TOUCH && connected && (buttons & 0xffffu || (axes && (axes[0] || axes[1] || axes[2] || axes[3]))))
         touch_override = 0;   // 实体手柄一动就切回手柄
     if (source != S2A_PAD_TOUCH) {   // 触屏的「+」是虚拟键，菜单本来就有四指长按入口
-        int down = connected && (buttons & (1u << 10));
+        // 「+」（bit10）或 Home（扩展位 bit16，NS2 手柄原样带、系统手柄由 ios/controller.m 补）按住都算开菜单的那一下（#276）
+        int down = connected && (buttons & ((1u << 10) | (1u << 16)));
         if (down && !plus_down) plus_seq++;
         plus_down = down;
     }

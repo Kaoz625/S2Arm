@@ -172,6 +172,17 @@ int main(void) {
         s2a_pad_update(S2A_PAD_TOUCH, 1, plus, zero); assert(!s2a_pad_plus_press());                // 虚拟键「+」不算
         s2a_pad_update(S2A_PAD_TOUCH, 1, 0, zero);
         s2a_pad_set_active(0); s2a_pad_set_active(1); expect(0, 0, 0); }
+    // #276 Home（扩展位 bit16）同「+」开菜单：系统手柄 / NS2 手柄按住 Home 有序号、松开回 0；按着 Home 再按「+」还是同一下；Home 不进游戏（截掉高位）；触屏不算
+    {   const uint32_t plus = 1u << 10, home = 1u << 16;
+        s2a_pad_update(S2A_PAD_SYSTEM, 1, home, zero); uint64_t h = s2a_pad_plus_press(); assert(h);
+        expect(0, 0, 0);                                                                             // Home 位不当成任何游戏按键
+        s2a_pad_update(S2A_PAD_SYSTEM, 1, home | plus, zero); assert(s2a_pad_plus_press() == h);    // 按着 Home 再按「+」：同一下
+        s2a_pad_update(S2A_PAD_SYSTEM, 1, 0, zero); assert(!s2a_pad_plus_press());
+        s2a_pad_update(S2A_PAD_BLE, 1, home, zero); uint64_t h2 = s2a_pad_plus_press(); assert(h2 && h2 != h);
+        s2a_pad_update(S2A_PAD_BLE, 0, 0, NULL); assert(!s2a_pad_plus_press());
+        s2a_pad_update(S2A_PAD_TOUCH, 1, home, zero); assert(!s2a_pad_plus_press());
+        s2a_pad_update(S2A_PAD_TOUCH, 1, 0, zero);
+        s2a_pad_set_active(0); s2a_pad_set_active(1); expect(0, 0, 0); }
 
     s2a_pad_snapshot snapshot, next;
     s2a_pad_read_ex(&snapshot);
