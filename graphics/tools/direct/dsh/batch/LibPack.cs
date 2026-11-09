@@ -275,6 +275,24 @@ static class LibPack
         if (vkfp == null && ents.Any(e => e.K == K_SPV)) return (new() { $"有 _b.spv（Vulkan 库的种类）却没给 Vulkan 侧指纹" }, "");
         if (vkfp != null && ents.Any(e => e.K != K_SPV && e.K != 1)) return (new() { $"给了 Vulkan 侧指纹却混进了 Metal 段（如 {ents.First(e => e.K != K_SPV && e.K != 1).N}；Vulkan 库只收 _b.json / _b.spv）" }, "");
         if (ents.Count == 0) return (new() { $"{d} 一个键文件都没有" }, "");
+        // A network's layers must all execute, or all use the old stand-in. Per-key opt-in would
+        // mix newly translated missing keys with old packaged scalar layers and read unwritten buffers.
+        bool tensorNative = vkfp == null, anyCompute = false;
+        foreach (var ent in ents.Where(e => e.K == 1))
+        {
+            try
+            {
+                using var doc = JsonBytes(get(ent.N));
+                var root = doc.RootElement;
+                if (!root.TryGetProperty("stage", out var st)) { tensorNative = false; continue; }
+                if (st.GetString() != "cs") continue;
+                anyCompute = true;
+                tensorNative &= root.TryGetProperty("tensor_mma_abi", out var abi) && abi.TryGetInt32(out int a) && a == 1 &&
+                    root.TryGetProperty("tensor_mma_count", out var count) && count.TryGetInt32(out int c) && c >= 0;
+            }
+            catch (Exception e) when (e is JsonException || e is ArgumentException || e is InvalidOperationException) { tensorNative = false; }
+        }
+        tensorNative &= anyCompute;
         ents.Sort((a, b) => a.Key != b.Key ? a.Key.CompareTo(b.Key) : a.K != b.K ? a.K.CompareTo(b.K) : Cp.Compare(a.N, b.N));
         // 种类 0 换成所在批库（json fn_lib）：批库没了 = 不齐，不打包
         var src = new Dictionary<string, string>(); var have = new HashSet<string>(nameList);
@@ -342,7 +360,7 @@ static class LibPack
             for (int i = 0; i < shards.Count; i++) sizes[i] = new FileInfo(shards[i]).Length;   // 同 Python os.path.getsize
             idx = new byte[48 + 16 * shards.Count + 24 * recs.Count];
             var w = idx.AsSpan();
-            MAGIC.CopyTo(w); W32(w, 8, VER); W32(w, 12, (uint)recs.Count); W32(w, 16, (uint)shards.Count); W32(w, 20, 0);
+            MAGIC.CopyTo(w); W32(w, 8, VER); W32(w, 12, (uint)recs.Count); W32(w, 16, (uint)shards.Count); W32(w, 20, tensorNative ? 1u : 0u);
             Encoding.ASCII.GetBytes(chain).CopyTo(w[24..]);   // 12 字节链版本，不足补 0；36–47 为 0
             if (vkfp != null) W64(w, 36, Convert.ToUInt64(vkfp, 16));   // Vulkan 库：36–43 = Vulkan 侧指纹（u64），44–47 仍为 0
             for (int i = 0; i < shards.Count; i++) W64(w, 48 + 16 * i, (ulong)sizes[i]);

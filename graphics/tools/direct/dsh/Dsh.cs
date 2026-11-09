@@ -200,6 +200,7 @@ namespace S2A.Dsh
                 code = Sl(code, 0, (int)ilen);
                 string cp = Path.Combine(W, Key + ".bin"); XIo.WriteAllBytes(cp, code);
                 var j = new JsonObject { ["key"] = Key, ["stage"] = stage, ["code"] = cp, ["arch"] = "sm86", ["tex"] = new JsonObject(), ["img"] = new JsonObject(), ["attr"] = new JsonObject(), ["fout"] = new JsonObject(), ["c1"] = Convert.ToHexStringLower(c1) };
+                if (stage == "cs") j["tensor_mma_count"] = DshTensor.Count(code);
                 // 计算阶段的驱动常量在 c[0] 里按程序排（推送常量字数 +0xa9，uniform / storage / 纹理项数 +0xb1..+0xb3，分离纹理 / 分离采样器项数 +0xb4 / +0xb5（图像在它们之后，上游参考实现（MIT）67f1d0055），大小 +0xba），翻译器按它映射（InstEmitAmpere.cs AMapC0）
                 if (stage == "cs") j["nvn2_cs"] = new JsonArray(ctl[0xb1], ctl[0xb2], ctl[0xb3], BitConverter.ToUInt16(ctl, 0xba), ctl[0xa9] * 4, ctl[0xb4], ctl[0xb5]);
                 if (stage == "ds") j["tess_mode"] = (long)Nvn2.TessMode(ctl);
@@ -402,6 +403,13 @@ namespace S2A.Dsh
                     }
                 }
                 src = Precise(src);
+                int tensorMma = stage == "cs" ? j["tensor_mma_count"]?.GetValue<int>() ?? 0 : 0;
+                if (tensorMma > 0)
+                {
+                    long threads = j["local"] is JsonArray tl && tl.Count == 3 ? tl.Aggregate(1L, (n, v) => n * v.GetValue<long>()) : 0;
+                    if (threads <= 0 || threads > 1024 || threads % 32 != 0) tensorMma = -1;
+                }
+                if (tensorMma > 0) src = DshTensor.Lower(src);
                 uint spill = 0;   // 共享内存超过 32 KB 的计算核：最大的数组挪到设备缓冲（同 dmsh_build.py spill_fix，在 fs_lb 之前）
                 if (stage == "cs") (src, spill) = NxgalSpvCross.SpillFix(src, SPILL_SLOT);
                 if (stage == "ps") src = FsUvx(src);   // 宽屏 16:9 采样换算，在整数输出入口复制 main0 之前（同 dmsh_build.py）
@@ -445,6 +453,7 @@ namespace S2A.Dsh
                 if (lay != null) { refl["entry_layer"] = "main0_l"; refl["entry_layer_z"] = "main0_lz"; refl["layer_from"] = lay; }
                 if (fu != null) { refl["entry_u"] = "main0_u"; refl["u_mask"] = (long)uMask; }
                 refl["threadgroup_size"] = j["local"]?.DeepClone();
+                if (stage == "cs") { refl["tensor_mma_abi"] = tensorMma >= 0 ? 1L : 0L; refl["tensor_mma_count"] = (long)tensorMma; }
                 if (spill != 0) { refl["spill"] = (long)spill; refl["spill_slot"] = (long)SPILL_SLOT; }
                 refl["c1"] = Convert.ToHexStringLower(c1); refl["notes"] = notes; refl["drv_reads"] = dr; refl["drv_unfillable"] = Unfillable(dr);
                 var binds = Reflect(stage, src, res);

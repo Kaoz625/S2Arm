@@ -6,7 +6,7 @@
 #   种类 51 = _se.metallib（宿主 LP_K_SE），_se.json 不是键文件
 #   反证：认不出的键文件 → 退出 1、输出目录不留分片 / 索引 / 临时文件；再打一次（已有 lib.idx）→ 退出 1；
 #   两段 40 MB 跨过 64 MB 分片上限 → 第二段进新分片、相同字节只存一段（分片号按手算）；成批合编（json fn_lib）两键种类 0 同一段 = 批库字节，批库不在 → 退出 1
-import os, shutil, struct, subprocess, sys, tempfile
+import json, os, shutil, struct, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, '../../../../translator')); import dsh_batch
@@ -43,6 +43,23 @@ def parse(d):
     sizes = [struct.unpack_from('<QQ', idx, 48 + 16 * s)[0] for s in range(ns)]
     recs = [struct.unpack_from('<QBBHIQ', idx, 48 + 16 * ns + 24 * i) for i in range(n)]
     return magic, ver, chain, sizes, recs, len(idx) == 48 + 16 * ns + 24 * n
+
+# Header capability is a whole-library contract; a mixed or unsupported compute set cannot opt in.
+for rows, expected in [
+    ([{'stage': 'cs', 'tensor_mma_abi': 1, 'tensor_mma_count': 4}, {'stage': 'cs', 'tensor_mma_abi': 1, 'tensor_mma_count': 0}], 1),
+    ([{'stage': 'cs', 'tensor_mma_abi': 1, 'tensor_mma_count': 4}, {'stage': 'cs'}], 0),
+    ([{'stage': 'cs', 'tensor_mma_abi': 1, 'tensor_mma_count': 4}, {}], 0),
+    ([{'stage': 'cs', 'tensor_mma_abi': 1, 'tensor_mma_count': 4}, {'stage': 'cs', 'tensor_mma_abi': 0, 'tensor_mma_count': -1}], 0),
+    ([{'stage': 'ps'}, {'stage': 'vs'}], 0),
+]:
+    with tempfile.TemporaryDirectory() as t:
+        d, _ = build(t)
+        for k, row in zip((K1, K2), rows):
+            with open(os.path.join(d, f'{k}_b.json'), 'w') as f: json.dump(row, f)
+        o = os.path.join(t, 'packed')
+        r = pack(d, o, CHAIN)
+        flags = struct.unpack_from('<I', open(os.path.join(o, 'lib.idx'), 'rb').read(), 20)[0] if r.returncode == 0 else -1
+        check(flags == expected, f'tensor capability: expected {expected} -> {flags} ({rows})')
 
 with tempfile.TemporaryDirectory() as t:
     d, orig = build(t); o = os.path.join(t, f'b-{CHAIN}')

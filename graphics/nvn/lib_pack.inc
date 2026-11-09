@@ -1,5 +1,5 @@
 // S2Arm 直连库打包容器的读法（10-25 合库，格式见共享笔记「画面着色器线_直连库合库草案_1025.md」§1，出库 graphics/tools/direct/lib_pack.py）。
-//   b-<链版本>/lib.idx：头 48 字节（偏移 0 "S2ALIB\0\0"、8 u32 ver = 1、12 u32 n、16 u32 nshard、20 u32 0、24 char chain[12]、36–47 为 0）+ nshard × 16 字节分片表（u64 size、u64 0）
+//   b-<链版本>/lib.idx：头 48 字节（偏移 0 "S2ALIB\0\0"、8 u32 ver = 1、12 u32 n、16 u32 nshard、20 u32 flags（位 0：全部计算程序为 tensor ABI 1）、24 char chain[12]、36–47 为 0）+ nshard × 16 字节分片表（u64 size、u64 0）
 //   + n × 24 字节记录 {u64 key; u8 kind; u8 shard; u16 0; u32 len; u64 off;}，按 (key, kind) 升序；b-<链版本>/lib.NNN.pak：各段原样字节。
 //   kind：0 _b.metallib、1 _b.json、2 _bf.metallib、3 _bv.metallib、4+d _b_t<d>.metallib（曲面外壳的另外几种域，d = 0–2）、16+i _bg<i>.metallib、32+i _bg<i>.json、48 _bgv.metallib、49 _bgv.json、50 _ft.metallib（片元输出类型变体，入口 main0_t<u>_<s>）、
 //   64+i _bgs<i>.metallib、80+i _bgs<i>.json、96 _bgc.metallib、97 _bgc.json（直通几何快路，Dsh.cs GeometryFinish）。

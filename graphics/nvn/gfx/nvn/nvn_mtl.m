@@ -5207,7 +5207,7 @@ static void shmap_load_once(void) {
     id<MTLFunction> fn, tf_fn, fn_u, geo_fn;   // fn_u: the integer-output entry point (dmsh_build.py fs_uint), for pipelines whose unsigned integer attachments are exactly u_mask (pso_desc)
     uint8_t s_rec, warm_claimed;   // submit-thread first-use / prewarm handoff counters
     uint8_t gmem_use;   // 0 未判 / 1 不绑原始内存池表 / 2 绑（gmem_uses：动态占比计数用）
-    uint8_t tensor, tensor_log;   // S2Arm 11-05: compute shader with tensor-core matrix multiplies (Ampere HMMA): 1 = yes (stood in, nvn_tensor.inc), 2 = checked, none; 0 = not checked
+    uint8_t tensor, tensor_log;   // HMMA: 1 = spatial stand-in, 2 = none, 3 = native SIMD-group matrix ABI 1; 0 = not checked
     uint16_t tensor_sq;   // S2Arm 11-05: such a shader's HMUL2 Rd, Ra, |Ra| (nvn2_hsq_count): its output is the signed square of what it reads plus the network's residual, the stand-in squares its input (nvn_tensor.inc)
     id<MTLLibrary> at_lib; NSString *at_main, *at_u; NSMutableDictionary<NSNumber *, id<MTLFunction>> *at_fns; uint8_t has_atms;   // gap families 34 / 37: a fragment main0 declaring S2A_AT / S2A_MSOFF (Dsh.cs FsAlphaMs): its library and entry names, specialized per (u, at, msoff) on demand (fs_atms_fn)
     int load_depth_zero;   // captured with the identity, also used by its layer variant
@@ -5572,6 +5572,15 @@ static const char *fb_xfp(void) {
     return x;
 }
 static int fb_json_current(NSDictionary *j) { const char *x = fb_xfp(); return x && [j[@"chain"] isEqual:@DMSH_CHAIN] && [j[@"xfp"] isEqual:@(x)]; }
+// Only newly lowered libraries may execute the network. Old scalar libraries retain the stand-in.
+// The override is process-wide and diagnostic, so A/B differs by one variable for the whole network.
+static int tensor_native_json(NSDictionary *j) {
+    static int enabled = -1;
+    if (enabled < 0) { const char *e = getenv("DM_NVN_TENSOR_NATIVE"); enabled = e && !strcmp(e, "0") ? 0 : e && !strcmp(e, "1") ? 1 : 2; }
+    lp_pack *pack = lp_pack_get(); uint32_t flags = 0; if (pack) memcpy(&flags, pack->idx + 20, 4);
+    return enabled && (enabled == 1 || (flags & 1)) && [j[@"tensor_mma_abi"] intValue] == 1 && [j[@"tensor_mma_count"] intValue] > 0
+        && [g_dev supportsFamily:MTLGPUFamilyApple7];
+}
 static NvShader *shader_build(NSString *pc, int stage, int layer, int depth_zero) {
     NSError *e = nil;
     // S2Arm: a key missing from the library is looked up in DM_MSL_FALLBACK (the on-device fallback translation writes <key>_b.metal + .json there; iOS cannot store a metallib built at runtime)
@@ -5587,7 +5596,7 @@ static NvShader *shader_build(NSString *pc, int stage, int layer, int depth_zero
         return o;
     }
     if (stage == 2 && !j) return nil;   // missing geometry translation: the caller's red line says so
-    if (t_refl_only && stage == 5 && j && [j[@"chain"] isEqual:@DMSH_CHAIN]) {   // a tensor-core network program (t_refl_only): its reflection, no library
+    if (t_refl_only && stage == 5 && j && [j[@"chain"] isEqual:@DMSH_CHAIN] && !tensor_native_json(j)) {   // old tensor libraries: reflection only
         NvShader *o = [NvShader new]; o->gs_loc = o->lay_loc = -1; o->stage = 5; o->tensor = 1; strlcpy(o->key, pc.UTF8String, sizeof o->key);
         o->fnpfx = [j[@"fn_prefix"] isKindOfClass:[NSString class]] ? j[@"fn_prefix"] : @"";
         char err[160]; if (nvn_refl_from_json(j, &o->rf, err, sizeof err)) { MLOG("【红】 shader %s reflection conversion failed: %s", pc.UTF8String, err); return nil; }
@@ -5646,6 +5655,10 @@ static NvShader *shader_build(NSString *pc, int stage, int layer, int depth_zero
             o->geo_tf_stride[b] = [e[0] unsignedIntValue]; o->geo_tf_n[b] = (uint32_t)ent.count;
             for (NSUInteger k = 0; k < ent.count; k++) { o->geo_tf_off[b][k] = [ent[k][0] unsignedIntValue]; o->geo_tf_comp[b][k] = [ent[k][1] unsignedIntValue]; } } }
     o->fn = [lib newFunctionWithName:fnn(o, entry)]; o->stage = stage; o->load_depth_zero = depth_zero; strlcpy(o->key, pc.UTF8String, sizeof o->key); o->ventry = entry;
+    if (stage == 5 && tensor_native_json(j)) {
+        o->tensor = 3;
+        MLOG("compute shader %s: native HMMA.16816 F16 (%d instructions, SIMD-group matrix ABI 1)", pc.UTF8String, [j[@"tensor_mma_count"] intValue]);
+    }
     if (!o->fn) { MLOG("【红】 shader %s: no entry point %s in its library", pc.UTF8String, entry.UTF8String); return nil; }
     // writes the layer (render_target_array_index, named in the library's metadata): its passes are layered and its pipelines get an input class (pso_desc). A library with layer entry points
     // names it for those alone: its main0 / main0_z write no layer
@@ -5985,7 +5998,7 @@ static __unsafe_unretained NvProg *prog_get(const prog_t *cp) {   // Called only
         t_refl_only = 0;
         if (sh) o->sh[st] = sh; else MLOG("【红】 shader %s (%s) failed to load: build the shaders with dm/gfx/tools/dmsh_build.py first", k.UTF8String, stage.UTF8String);
         if (sh && st == 5 && nh) sh->tensor_sq = (uint16_t)MIN(nsq, 0xffffu);
-        if (sh && st == 5 && sh->tensor != 1) {
+        if (sh && st == 5 && sh->tensor != 1 && sh->tensor != 3) {
             if (nh) MLOG("compute shader %s: %u tensor-core matrix multiplies (HMMA): the game's own upscaling network, stood in (nvn_tensor.inc)", sh->key, nh);
             if (!sh->tensor || nh) sh->tensor = nh ? 1 : 2;   // a full build of the same key (an earlier prewarm) is still never dispatched
         }
@@ -13247,6 +13260,7 @@ static void img_wr_prescan(NvShader *sh, int nvn_stage) {
     pthread_mutex_unlock(&g_rmu);
 }
 static void tensor_standin(NvShader *cs);   // nvn_tensor.inc
+static uint64_t g_tensor_native_runs;
 static void dispatch(const p_dispatch *dp) {
     geo_run_flush();
     zskip_clear();
@@ -13356,6 +13370,10 @@ static void dispatch(const p_dispatch *dp) {
         if (!own) g_gp_disp++;
         enc_c_dispatch_indirect(ce, ig, MTLSizeMake(tg[0], tg[1], tg[2]));
     } else { if (!own) g_gp_disp++; enc_c_dispatch(ce, MTLSizeMake(gx, gy, dp->z), MTLSizeMake(tg[0], tg[1], tg[2])); }
+    if (cs->tensor == 3) {
+        g_tensor_native_runs++;
+        if (!(cs->tensor_log & 16)) { cs->tensor_log |= 16; MLOG("native neural super-resolution dispatch: %s, groups %ux%ux%d, local %ux%ux%u", cs->key, gx, gy, dp->z, tg[0], tg[1], tg[2]); }
+    }
     if (own) enc_c_end(ce);
 }
 // GPU: texture -> buffer (row stride taken from SetCopyRowStride, layer stride from SetCopyImageStride, 0 = tightly packed)
