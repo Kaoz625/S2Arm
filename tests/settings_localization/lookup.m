@@ -13,11 +13,11 @@ static NSDictionary *plist(NSString *path) {
     return [value isKindOfClass:NSDictionary.class]?value:@{};
 }
 static NSString *text(NSBundle *bundle, NSString *key, NSString *table, NSString *language) {
-    // Inspect exactly the requested shipped localization. Looking up the root
-    // bundle would let Foundation choose its only localization (Chinese) even
-    // for English. Settings' default English text resides in Root.plist.
+    // Only inspect actual shipped localizations; this does not model UIKit's
+    // language selection or fallback. English source is checked in Root.plist.
     NSString *directory=[bundle pathForResource:language ofType:@"lproj"];
-    if(!directory) return key;
+    check(directory!=nil,[@"required localization exists " stringByAppendingString:language]);
+    if(!directory) return nil;
     NSBundle *localized=[NSBundle bundleWithPath:directory];
     check(localized!=nil,[@"Foundation opens " stringByAppendingString:directory]);
     lookups++;
@@ -67,8 +67,6 @@ int main(int argc, char **argv) { @autoreleasepool {
         for(NSString *s in strings) {
             fields++;
             check([s rangeOfString:@"[\\p{Han}]" options:NSRegularExpressionSearch].location==NSNotFound,[@"English default field " stringByAppendingString:s]);
-            check([text(bundle,s,table,@"en") isEqual:s],[@"English default / localized display " stringByAppendingString:s]);
-            check([text(bundle,s,table,@"fr") isEqual:s],[@"untranslated language uses English source " stringByAppendingString:s]);
             NSString *chinese=text(bundle,s,table,@"zh-Hans");
             BOOL needsTranslation=[s rangeOfString:@"[A-Za-z]" options:NSRegularExpressionSearch].location!=NSNotFound;
             check(chinese.length && (!needsTranslation || ([zh[s] isKindOfClass:NSString.class] && [chinese isEqual:zh[s]])),[@"Foundation Chinese field " stringByAppendingString:s]);
@@ -78,7 +76,6 @@ int main(int argc, char **argv) { @autoreleasepool {
             readOnly++;
             check([spec[@"Values"] isEqual:@[@"unknown"]] && [spec[@"Titles"] isEqual:@[@"Unknown (shown after opening a game once)"]],@"main's fixed read-only unknown mapping");
             NSString *title=[spec[@"Titles"] firstObject]?:@"";
-            check([text(bundle,title,table,@"en") isEqual:@"Unknown (shown after opening a game once)"],@"English fixed unknown title");
             check([text(bundle,title,table,@"zh-Hans") isEqual:expected[@"Unknown (shown after opening a game once)"]],@"Chinese fixed unknown title");
             for(NSString *v in @[@"v0.1.9-abc123",@"2026-11-10T06:00:00Z",@"abc123def-0042"])
                 check(![spec[@"Values"] containsObject:v],@"version/build/time metadata absent from fixed Values");
