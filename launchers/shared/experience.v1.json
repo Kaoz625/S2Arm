@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "contract": "s2a.experience.v1",
-  "revision": 38,
+  "revision": 39,
   "languages": ["zh-Hans", "en"],
   "source_language": "zh-Hans",
   "note": "四端（Mac / iOS / Android / 鸿蒙）启动器的「一套体验」规格。状态、文案、错误码、任务事件到界面的映射只在这里定义一次；各端只负责画，不另写一套措辞。错误码的「下一步」不在本文件里写第二份：一律指向 pack/jobs/errors.py 的 RECOVERY（口径见 README.md）。口径号 revision 改动规则见 README.md。",
@@ -471,19 +471,19 @@
     "source": "runtime/include/s2a_direct_prompt.h",
     "note": "游戏内横幅（iOS / Mac 游戏窗口）与启动器共用同一份措辞，改这里要同步那个头文件，字面必须逐字一致。",
     "items": [
-      {"id": "ok", "macro": "S2A_DPROMPT_OK", "zh-Hans": "知道了"},
-      {"id": "save_atomic_title", "macro": "S2A_DPROMPT_SAVE_ATOMIC_TITLE", "zh-Hans": "存档提醒"},
+      {"id": "ok", "macro": "S2A_DPROMPT_OK", "zh-Hans": "知道了", "en": "Got It"},
+      {"id": "save_atomic_title", "macro": "S2A_DPROMPT_SAVE_ATOMIC_TITLE", "zh-Hans": "存档提醒", "en": "Save Warning"},
       {"id": "save_atomic_mac", "macro": "S2A_DPROMPT_SAVE_ATOMIC_MAC", "zh-Hans": "当前磁盘不能安全保存：请把游戏库挪到本机磁盘。保存过程中强退，可能留下写了一半的存档。"},
-      {"id": "save_atomic_ios", "macro": "S2A_DPROMPT_SAVE_ATOMIC_IOS", "zh-Hans": "当前存储不能安全保存：保存过程中强退，可能留下写了一半的存档。请等游戏存完再退出。"},
-      {"id": "vpad_touch_title", "macro": "S2A_DPROMPT_VPAD_TOUCH_TITLE", "zh-Hans": "这款游戏能用触屏"},
-      {"id": "vpad_touch_body", "macro": "S2A_DPROMPT_VPAD_TOUCH_BODY", "zh-Hans": "要点游戏自己的菜单，就切到触屏。左上角齿轮 → 按键布局，随时可以切回按键。"},
-      {"id": "vpad_touch_accept", "macro": "S2A_DPROMPT_VPAD_TOUCH_ACCEPT", "zh-Hans": "切到触屏"},
-      {"id": "vpad_touch_decline", "macro": "S2A_DPROMPT_VPAD_TOUCH_DECLINE", "zh-Hans": "先不用"},
+      {"id": "save_atomic_ios", "macro": "S2A_DPROMPT_SAVE_ATOMIC_IOS", "zh-Hans": "当前存储不能安全保存：保存过程中强退，可能留下写了一半的存档。请等游戏存完再退出。", "en": "This storage can’t save safely: force-quitting while the game saves can leave a half-written save. Wait for the game to finish saving before you quit."},
+      {"id": "vpad_touch_title", "macro": "S2A_DPROMPT_VPAD_TOUCH_TITLE", "zh-Hans": "这款游戏能用触屏", "en": "This game supports touch"},
+      {"id": "vpad_touch_body", "macro": "S2A_DPROMPT_VPAD_TOUCH_BODY", "zh-Hans": "要点游戏自己的菜单，就切到触屏。左上角齿轮 → 按键布局，随时可以切回按键。", "en": "To tap the game’s own menus, switch to touch. Gear icon (top left) → Button Layout switches back to buttons at any time."},
+      {"id": "vpad_touch_accept", "macro": "S2A_DPROMPT_VPAD_TOUCH_ACCEPT", "zh-Hans": "切到触屏", "en": "Switch to Touch"},
+      {"id": "vpad_touch_decline", "macro": "S2A_DPROMPT_VPAD_TOUCH_DECLINE", "zh-Hans": "先不用", "en": "Not Now"},
       {"id": "home_quit_title", "macro": "S2A_DPROMPT_HOME_QUIT_TITLE", "zh-Hans": "退出游戏？"},
       {"id": "home_quit_body", "macro": "S2A_DPROMPT_HOME_QUIT_BODY", "zh-Hans": "按 A 退出，按 B 回到游戏。退出前会等游戏把存档写完；没在游戏里存的进度会丢。"},
       {"id": "home_quit_accept", "macro": "S2A_DPROMPT_HOME_QUIT_ACCEPT", "zh-Hans": "退出"},
       {"id": "home_quit_decline", "macro": "S2A_DPROMPT_HOME_QUIT_DECLINE", "zh-Hans": "回到游戏"},
-      {"id": "vpad_touch_auto", "macro": "S2A_DPROMPT_VPAD_TOUCH_AUTO", "zh-Hans": "已切到触屏操作：这款游戏用触屏点菜单。左上角齿轮 → 按键布局，可以切回按键。"},
+      {"id": "vpad_touch_auto", "macro": "S2A_DPROMPT_VPAD_TOUCH_AUTO", "zh-Hans": "已切到触屏操作：这款游戏用触屏点菜单。左上角齿轮 → 按键布局，可以切回按键。", "en": "Switched to touch controls: this game uses touch for its menus. Gear icon (top left) → Button Layout switches back to buttons."},
       {"id": "switch_game_title", "macro": "S2A_DPROMPT_SWITCH_GAME_TITLE", "zh-Hans": "换一款游戏", "en": "Switch games"},
       {"id": "switch_game_body", "macro": "S2A_DPROMPT_SWITCH_GAME_BODY", "zh-Hans": "换一款游戏需要重新打开 S2Arm：先在游戏里存档，然后从屏幕底部上滑，把 S2Arm 划掉，再点开就回到游戏库。", "en": "To switch games, reopen S2Arm: save in the game first, then swipe up from the bottom of the screen, swipe S2Arm away, and tap it again to return to the game library."}
     ]
@@ -493,13 +493,13 @@
     "source": "runtime/include/s2a_init_fail.h",
     "note": "iOS 人手局初启失败停在提示页（审计 #1534 P1-4）。上屏只放玩家话术：标题 + 按错误码映射的一句原因 + 下一步；内部摘要、错误码 id、构建号、翻译链、红行只进「复制诊断」的诊断文本（11-02 维护者：内部词不上屏）。游戏进程不读本文件，头文件的宏是实现来源，字面必须逐字一致；codes 与头文件 S2A_INIT_FAIL_CODES 一一对应，码表外的码按 unknown 用通用句。",
     "items": [
-      {"id": "title", "macro": "S2A_INIT_FAIL_TITLE", "zh-Hans": "游戏没能启动", "en": "The game couldn't start"},
-      {"id": "next", "macro": "S2A_INIT_FAIL_NEXT", "zh-Hans": "请从后台划掉本 App 再打开；仍不行请点「复制诊断」把诊断发给我们。", "en": "Swipe this app away in the app switcher and open it again. If it still fails, tap \"Copy diagnostics\" and send it to us."},
-      {"id": "msg_service", "macro": "S2A_INIT_FAIL_MSG_SERVICE", "zh-Hans": "游戏需要的系统功能没能准备好。", "en": "System features the game needs couldn't be prepared."},
-      {"id": "msg_runtime", "macro": "S2A_INIT_FAIL_MSG_RUNTIME", "zh-Hans": "本 App 没能准备好运行游戏。", "en": "This app couldn't get ready to run the game."},
-      {"id": "msg_game", "macro": "S2A_INIT_FAIL_MSG_GAME", "zh-Hans": "游戏程序没能开始运行。", "en": "The game program couldn't start running."},
+      {"id": "title", "macro": "S2A_INIT_FAIL_TITLE", "zh-Hans": "游戏没能启动", "en": "The game couldn’t start"},
+      {"id": "next", "macro": "S2A_INIT_FAIL_NEXT", "zh-Hans": "请从后台划掉本 App 再打开；仍不行请点「复制诊断」把诊断发给我们。", "en": "Swipe this app away in the app switcher and open it again. If it still fails, tap “Copy diagnostics” and send it to us."},
+      {"id": "msg_service", "macro": "S2A_INIT_FAIL_MSG_SERVICE", "zh-Hans": "游戏需要的系统功能没能准备好。", "en": "System features the game needs couldn’t be prepared."},
+      {"id": "msg_runtime", "macro": "S2A_INIT_FAIL_MSG_RUNTIME", "zh-Hans": "本 App 没能准备好运行游戏。", "en": "This app couldn’t get ready to run the game."},
+      {"id": "msg_game", "macro": "S2A_INIT_FAIL_MSG_GAME", "zh-Hans": "游戏程序没能开始运行。", "en": "The game program couldn’t start running."},
       {"id": "msg_generic", "macro": "S2A_INIT_FAIL_MSG_GENERIC", "zh-Hans": "启动过程中出了问题。", "en": "Something went wrong during startup."},
-      {"id": "msg_files", "macro": "S2A_INIT_FAIL_MSG_FILES", "zh-Hans": "游戏文件缺失，请重新导入：在 Mac 上的 S2Arm 里对这款游戏再点一次「装到 iPhone」。", "en": "Game files are missing. Import them again: in S2Arm on your Mac, choose \"Install on iPhone\" for this game again."},
+      {"id": "msg_files", "macro": "S2A_INIT_FAIL_MSG_FILES", "zh-Hans": "游戏文件缺失，请重新导入：在 Mac 上的 S2Arm 里对这款游戏再点一次「装到 iPhone」。", "en": "Game files are missing. Import them again: in S2Arm on your Mac, choose “Install on iPhone” for this game again."},
       {"id": "copy", "macro": "S2A_INIT_FAIL_COPY", "zh-Hans": "复制诊断", "en": "Copy diagnostics"},
       {"id": "copied", "macro": "S2A_INIT_FAIL_COPIED", "zh-Hans": "已复制", "en": "Copied"}
     ],
@@ -520,13 +520,13 @@
     "note": "iOS 起局自检不过时的提示页（runtime/src/selfcheck.c s2a_selfcheck_screen）。上屏只放玩家话术：标题 + 一句原因与下一步；地址上限、main.npdm、MB 这类细节只进 host.log（11-02 维护者：内部词不上屏）。判定顺序：NPDM 地址空间类型 0 / 2（32 位，布局只支持 36 / 39 位）→ as_*；没签权限 → ent_*；读不到本款要多大地址 → pkg_*；其余 → device_*。游戏进程不读本文件，头文件的宏是实现来源，字面必须逐字一致；每句带中英文，不复制进 Localizable.json。",
     "items": [
       {"id": "ent_title", "macro": "S2A_SELFCHECK_ENT_TITLE", "zh-Hans": "安装少了一项必要权限", "en": "A required permission is missing"},
-      {"id": "ent_body", "macro": "S2A_SELFCHECK_ENT_BODY", "zh-Hans": "这款游戏要用「提高内存上限」权限。请用 Mac 上的 S2Arm 对这款游戏点「装到 iPhone」重新装一次，会自动带上它。", "en": "This game needs the \"Increased Memory Limit\" permission. In S2Arm on your Mac, click \"Install on iPhone\" for this game again; it will be included automatically."},
+      {"id": "ent_body", "macro": "S2A_SELFCHECK_ENT_BODY", "zh-Hans": "这款游戏要用「提高内存上限」权限。请用 Mac 上的 S2Arm 对这款游戏点「装到 iPhone」重新装一次，会自动带上它。", "en": "This game needs the “Increased Memory Limit” permission. In S2Arm on your Mac, click “Install on iPhone” for this game again; it will be included automatically."},
       {"id": "pkg_title", "macro": "S2A_SELFCHECK_PKG_TITLE", "zh-Hans": "游戏资源不完整", "en": "Game files are incomplete"},
-      {"id": "pkg_body", "macro": "S2A_SELFCHECK_PKG_BODY", "zh-Hans": "请在 Mac 上的 S2Arm 里对这款游戏再点一次「装到 iPhone」，它会把缺的补上。", "en": "In S2Arm on your Mac, click \"Install on iPhone\" for this game again to add what's missing."},
-      {"id": "device_title", "macro": "S2A_SELFCHECK_DEVICE_TITLE", "zh-Hans": "这台手机暂时玩不了这款游戏", "en": "This iPhone can't run this game yet"},
-      {"id": "device_body", "macro": "S2A_SELFCHECK_DEVICE_BODY", "zh-Hans": "这款游戏要的内存超过了这台手机的系统上限，重新安装也解决不了。换一台内存更大的 iPhone 就能玩。", "en": "This game needs more memory than this iPhone's system limit allows, and reinstalling won't help. It will run on an iPhone with more memory."},
-      {"id": "as_title", "macro": "S2A_SELFCHECK_AS_TITLE", "zh-Hans": "暂不支持这款游戏", "en": "This game isn't supported yet"},
-      {"id": "as32_body", "macro": "S2A_SELFCHECK_AS32_BODY", "zh-Hans": "这款游戏使用 32 位地址空间，S2Arm 暂不支持，重新安装或换手机都解决不了。", "en": "This game uses a 32-bit address space, which S2Arm doesn't support yet. Reinstalling or switching phones won't help."}
+      {"id": "pkg_body", "macro": "S2A_SELFCHECK_PKG_BODY", "zh-Hans": "请在 Mac 上的 S2Arm 里对这款游戏再点一次「装到 iPhone」，它会把缺的补上。", "en": "In S2Arm on your Mac, click “Install on iPhone” for this game again to add what’s missing."},
+      {"id": "device_title", "macro": "S2A_SELFCHECK_DEVICE_TITLE", "zh-Hans": "这台手机暂时玩不了这款游戏", "en": "This iPhone can’t run this game yet"},
+      {"id": "device_body", "macro": "S2A_SELFCHECK_DEVICE_BODY", "zh-Hans": "这款游戏要的内存超过了这台手机的系统上限，重新安装也解决不了。换一台内存更大的 iPhone 就能玩。", "en": "This game needs more memory than this iPhone’s system limit allows, and reinstalling won’t help. It will run on an iPhone with more memory."},
+      {"id": "as_title", "macro": "S2A_SELFCHECK_AS_TITLE", "zh-Hans": "暂不支持这款游戏", "en": "This game isn’t supported yet"},
+      {"id": "as32_body", "macro": "S2A_SELFCHECK_AS32_BODY", "zh-Hans": "这款游戏使用 32 位地址空间，S2Arm 暂不支持，重新安装或换手机都解决不了。", "en": "This game uses a 32-bit address space, which S2Arm doesn’t support yet. Reinstalling or switching phones won’t help."}
     ]
   },
 

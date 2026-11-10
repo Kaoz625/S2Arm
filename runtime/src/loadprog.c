@@ -2,6 +2,7 @@
 #include "native.h"
 #include "s2a_loadprog.h"
 #include "s2a_docs.h"   // 文档根唯一取法
+#include "s2a_ui_lang.h"   // 上屏话术英文默认（S2A_TR）
 #include <errno.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -131,11 +132,12 @@ void s2a_load_snapshot(uint64_t now, s2a_load_view *v) {
 }
 
 void s2a_load_eta_text(int s, char *out, size_t n) {
-    if (s < 0) snprintf(out, n, "正在估算剩余时间");
-    else if (s < 5) snprintf(out, n, "不到 5 秒");
-    else if (s < 60) snprintf(out, n, "%d 秒", s);   // 逐秒倒数（11-06 维护者：原先按 5 秒一档取整，看着像写死的）
-    else if (s % 60) snprintf(out, n, "%d 分 %d 秒", s / 60, s % 60);
-    else snprintf(out, n, "%d 分钟", s / 60);
+    // 11-10 英文默认（S2A_TR）：加载页外面再套「剩余%@」/「%@ left」（ios/loadpage.m loadpage.eta）
+    if (s < 0) snprintf(out, n, "%s", S2A_TR("Estimating time left", "正在估算剩余时间"));
+    else if (s < 5) snprintf(out, n, "%s", S2A_TR("Under 5 s", "不到 5 秒"));
+    else if (s < 60) snprintf(out, n, S2A_TR("%d s", "%d 秒"), s);   // 逐秒倒数（11-06 维护者：原先按 5 秒一档取整，看着像写死的）
+    else if (s % 60) snprintf(out, n, S2A_TR("%d min %d s", "%d 分 %d 秒"), s / 60, s % 60);
+    else snprintf(out, n, S2A_TR("%d min", "%d 分钟"), s / 60);
 }
 
 // 没有加载页前端（没调过 s2a_load_begin：Mac / 安卓宿主）回 -1：直连层用自己的护栏（DM_PSO_PREPARE_STALL_MS / DM_PSO_PREPARE_MAX_MS），同弱定义

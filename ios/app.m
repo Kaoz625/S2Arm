@@ -13,6 +13,13 @@
 #include "s2a_session.h"
 #include "s2a_dguard.h"
 #include "s2a_init_fail.h"   // 初启失败页的标题 / 按钮文案（与 launchers/shared/experience.v1.json init_fail_page 逐字一致）
+#include "s2a_ui_lang.h"   // 原生层（C）上屏话术的语言开关 s2a_ui_zh（S2A_TR）
+#include "s2a_direct_prompt.h"
+// 11-10 英文默认（维护者：英文设备上看到中文）：原生层话术跟 App 实际选中的本地化走——App 只带 en / zh-Hans 两份字符串表，
+//   设备首选语言是中文才选中 zh-Hans，其余（英文、或 App 没有的语言）都是 en（Info.plist CFBundleDevelopmentRegion = en）。main 之前定好，闸门 / 自检页都在它之后
+__attribute__((constructor)) static void s2a_ui_lang_init(void) {
+    @autoreleasepool { NSString *l = NSBundle.mainBundle.preferredLocalizations.firstObject ?: @"en"; s2a_ui_zh = [l hasPrefix:@"zh"] ? 1 : 0; }
+}
 void s2a_loadpage_attach(UIView *root); void s2a_loadpage_front(void);   // loadpage.m：首次加载页 / 简短启动画面
 #import <Metal/Metal.h>   // NSProcessPerformanceProfileSustained 定义在 Metal 的 MTLDeviceCertification.h（心跳打持续执行档用）
 static _Atomic double g_brightness = -1;   // 屏幕亮度：主线程建场景 / 心跳时更新，渲染侧（hle_nvn.c 每 300 帧那行）只读缓存，不在别的线程碰 UIKit
@@ -219,7 +226,7 @@ static void note_build(void) {
     if (!g_root || !g_note) return;
     NSMutableArray *bs = [NSMutableArray array];
     if (g_note.count > 6) { NSString *text = g_note[6];   // 「复制诊断」（初启失败页）：诊断文本放进剪贴板，玩家直接粘贴发给我们
-        [bs addObject:s2a_notice_button(@S2A_INIT_FAIL_COPY, YES, ^(UIButton *b) { UIPasteboard.generalPasteboard.string = text; [b setTitle:@S2A_INIT_FAIL_COPIED forState:UIControlStateNormal]; LOG("初启失败页：诊断已复制到剪贴板"); })]; }
+        [bs addObject:s2a_notice_button(@(S2A_TR(S2A_INIT_FAIL_COPY_EN, S2A_INIT_FAIL_COPY)), YES, ^(UIButton *b) { UIPasteboard.generalPasteboard.string = text; [b setTitle:@(S2A_TR(S2A_INIT_FAIL_COPIED_EN, S2A_INIT_FAIL_COPIED)) forState:UIControlStateNormal]; LOG("初启失败页：诊断已复制到剪贴板"); })]; }
     if ([g_note[5] boolValue]) [bs addObject:s2a_notice_button(S2AL(@"app.notice.exportDiag"), NO, ^(UIButton *b) { (void)b; s2a_diag_export(); })];
     g_note_view = s2a_notice_page(g_root.bounds, g_note[0], g_note[1], g_note[2], [g_note[3] floatValue], [g_note[4] length] ? g_note[4] : nil, bs);
     [g_root addSubview:g_note_view];
@@ -290,9 +297,9 @@ static S2ADguardTarget *g_dguard_target;
 // 提示页（主线程，g_root 已建）
 static void dguard_build(S2ADguardTarget *t) {
     __weak S2ADguardTarget *w = t;
-    UIButton *diag = s2a_notice_button(@S2A_DGUARD_DIAG, NO, ^(UIButton *b) { (void)b; s2a_diag_export(); });
-    UIButton *go = s2a_notice_button(@S2A_DGUARD_GO, YES, ^(UIButton *b) { (void)b; S2ADguardTarget *x = w; if (!x) return; [x->page removeFromSuperview]; x->page = nil; dispatch_semaphore_signal(x->go); });
-    UIView *page = s2a_notice_page(g_root.bounds, @"exclamationmark.triangle.fill", @S2A_DGUARD_TITLE, @S2A_DGUARD_MSG, -1, nil, @[diag, go]);
+    UIButton *diag = s2a_notice_button(@(S2A_TR(S2A_DGUARD_DIAG_EN, S2A_DGUARD_DIAG)), NO, ^(UIButton *b) { (void)b; s2a_diag_export(); });
+    UIButton *go = s2a_notice_button(@(S2A_TR(S2A_DGUARD_GO_EN, S2A_DGUARD_GO)), YES, ^(UIButton *b) { (void)b; S2ADguardTarget *x = w; if (!x) return; [x->page removeFromSuperview]; x->page = nil; dispatch_semaphore_signal(x->go); });
+    UIView *page = s2a_notice_page(g_root.bounds, @"exclamationmark.triangle.fill", @(S2A_TR(S2A_DGUARD_TITLE_EN, S2A_DGUARD_TITLE)), @(S2A_TR(S2A_DGUARD_MSG_EN, S2A_DGUARD_MSG)), -1, nil, @[diag, go]);
     t->page = page; [g_root addSubview:page]; [g_root bringSubviewToFront:page];
     LOG("直连安全网：提示页已显示");
 }
@@ -345,7 +352,7 @@ void s2a_ios_gpu_stopped(const char *why) {
 //   body 由 s2a_init_fail_screen 按错误码给（只含玩家话术），这里只负责显示；内部摘要只在 diag 里（11-02 维护者：内部词不上屏）。
 //   复用渲染失败的终局标记：回前台不恢复游戏、不再碰服务层焦点 / GPU 闸门（s2a_ios_suspend）
 void s2a_ios_init_failed(const char *body, const char *diag) {
-    NSString *t = @S2A_INIT_FAIL_TITLE, *b = @(body ?: S2A_INIT_FAIL_MSG_GENERIC);
+    NSString *t = @(S2A_TR(S2A_INIT_FAIL_TITLE_EN, S2A_INIT_FAIL_TITLE)), *b = @(body ?: S2A_TR(S2A_INIT_FAIL_MSG_GENERIC_EN, S2A_INIT_FAIL_MSG_GENERIC));
     NSString *d = @(diag ?: ""), *key = [NSString stringWithFormat:@"%@\n\n%@", t, b];
     dispatch_async(dispatch_get_main_queue(), ^{
         atomic_store(&g_render_failed, 1);

@@ -33,6 +33,7 @@ void s2a_hud_brief_show(UIView *root, BOOL on) __attribute__((weak_import));
 #include "s2a_docs.h"   // iOS 进程级容器 Documents（s2a_container_docs）
 #include "s2a_pad.h"
 #include "s2a_direct_prompt.h"   // 触屏提示的文案（与 launchers/shared/experience.v1.json prompts 逐字一致）
+#include "s2a_ui_lang.h"   // S2A_TR：英文缺省、界面语言中文才出中文
 #include <stdatomic.h>
 #include <pthread.h>
 #include <sys/stat.h>
@@ -761,11 +762,11 @@ static NSString *const kSlideSwitchKey = @"S2AVPadSlideSwitch";   // 滑动切�
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         S2AVPadView *view = weakSelf; if (!view || view->_touchOnly) { if (view) LOG("触屏布局：3 秒内已切到仅触屏（自动切），不弹「切到触屏」"); return; }
         [u setBool:YES forKey:kTouchHintKey];
-        if (s2a_dprompt_ask) s2a_dprompt_ask(@S2A_DPROMPT_VPAD_TOUCH_TITLE, @S2A_DPROMPT_VPAD_TOUCH_BODY, @S2A_DPROMPT_VPAD_TOUCH_ACCEPT, @S2A_DPROMPT_VPAD_TOUCH_DECLINE, 0, 15, ^(BOOL accept) {
+        if (s2a_dprompt_ask) s2a_dprompt_ask(@(S2A_TR(S2A_DPROMPT_VPAD_TOUCH_TITLE_EN, S2A_DPROMPT_VPAD_TOUCH_TITLE)), @(S2A_TR(S2A_DPROMPT_VPAD_TOUCH_BODY_EN, S2A_DPROMPT_VPAD_TOUCH_BODY)), @(S2A_TR(S2A_DPROMPT_VPAD_TOUCH_ACCEPT_EN, S2A_DPROMPT_VPAD_TOUCH_ACCEPT)), @(S2A_TR(S2A_DPROMPT_VPAD_TOUCH_DECLINE_EN, S2A_DPROMPT_VPAD_TOUCH_DECLINE)), 0, 15, ^(BOOL accept) {
             LOG("触屏布局：提示条 %s", accept ? "点了「切到触屏」" : "没切（先不用 / 超时）");
             if (accept) [weakSelf setTouchOnly:YES manual:YES why:@"提示条"];
         });
-        else if (s2a_dprompt_notice) s2a_dprompt_notice(@S2A_DPROMPT_VPAD_TOUCH_TITLE, @S2A_DPROMPT_VPAD_TOUCH_BODY, 0, 15);
+        else if (s2a_dprompt_notice) s2a_dprompt_notice(@(S2A_TR(S2A_DPROMPT_VPAD_TOUCH_TITLE_EN, S2A_DPROMPT_VPAD_TOUCH_TITLE)), @(S2A_TR(S2A_DPROMPT_VPAD_TOUCH_BODY_EN, S2A_DPROMPT_VPAD_TOUCH_BODY)), 0, 15);
     });
 }
 - (BOOL)touchOnly { return _touchOnly; }

@@ -6,7 +6,8 @@
 //   路径相对资源包根；绝对路径、含 .. 的路径、其他条目类型一律判失败（不猜）。
 #include "native.h"
 #include "s2a_docs.h"   // iOS 进程级容器 Documents（s2a_container_docs）
-#include "s2a_launch_ctx.h"   // 资源包闸门按启动上下文定文档根（多款容器 = 本款 Documents/games/<游戏号>）
+#include "s2a_launch_ctx.h"
+#include "s2a_ui_lang.h"   // 上屏话术英文默认、界面语言中文才出中文（S2A_TR）   // 资源包闸门按启动上下文定文档根（多款容器 = 本款 Documents/games/<游戏号>）
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -229,10 +230,12 @@ struct s2a_gate_watch { int n, moved; uint64_t fp; time_t changed; };
 static int g_pack_bad; static char g_pack_first[512];
 // 说明页正文（app.m s2a_ios_show_pack_help）。again = 玩家刚按过「重新检查」、还是不行：开头先说一句，不然整页原样重画，玩家以为按钮没生效（审计 P2-2）
 void s2a_pack_help_detail(int st, int again, char *d, size_t n) {
-    const char *pre = again ? "刚刚查过，还是没有完整的资源包。\n\n" : "";
+    const char *pre = again ? S2A_TR("Checked just now — the game data still isn’t complete.\n\n", "刚刚查过，还是没有完整的资源包。\n\n") : "";
     // 缺哪个文件（g_pack_first）只进日志（s2a_import_state 已打），不上屏（11-02 维护者：index.tsv 这类内部词玩家看不懂）
-    if (st == S2A_IMPORT_BROKEN) snprintf(d, n, "%s资源包里有一部分文件没拷全，多半是拷到一半断了。请在 Mac 上的 S2Arm 里对这款游戏再点一次「装到 iPhone」，它会把缺的补上；也可以把「资源包」文件夹重新整个拷一次。拷好后这里会自动继续。", pre);
-    else snprintf(d, n, "%s这个 App 只是游戏的「外壳」，游戏本身在 Mac 上 S2Arm 打包得到的「资源包」里，手机上还没找到它。照下面做，放好后这里会自动继续。", pre);
+    if (st == S2A_IMPORT_BROKEN) snprintf(d, n, "%s%s", pre, S2A_TR("Some of the game data files weren’t fully copied — the copy probably stopped partway. In S2Arm on your Mac, click “Install on iPhone” for this game again to add what’s missing, or copy the whole “资源包” folder again. This page continues on its own once it’s copied.",
+                                                             "资源包里有一部分文件没拷全，多半是拷到一半断了。请在 Mac 上的 S2Arm 里对这款游戏再点一次「装到 iPhone」，它会把缺的补上；也可以把「资源包」文件夹重新整个拷一次。拷好后这里会自动继续。"));
+    else snprintf(d, n, "%s%s", pre, S2A_TR("This app is only the game’s “shell”: the game itself is in the “资源包” (game data) folder that S2Arm on your Mac makes, and it isn’t on this device yet. Follow the steps below; this page continues on its own once the data is in place.",
+                                           "这个 App 只是游戏的「外壳」，游戏本身在 Mac 上 S2Arm 打包得到的「资源包」里，手机上还没找到它。照下面做，放好后这里会自动继续。"));
 }
 int s2a_pack_check(const char *root, char *first, size_t n) {
     char idx[2100]; snprintf(idx, sizeof idx, "%s/index.tsv", root); FILE *f = fopen(idx, "r");
@@ -393,14 +396,18 @@ void s2a_ios_keep_awake(int on);   // app.m：导入期间关自动锁屏（原�
 void s2a_front_run(void (*guest_main)(void));
 // 提示页文案（11-02 维护者：一句人话说清发生了什么 + 玩家下一步；失败原因、文件名、返回码只进 host.log / unpack.log，经「导出诊断包」带走）。
 //   「导入完」请重新打开（原生层线 10-23：不同进程内接着进游戏）
+#define K_REINSTALL_EN "In S2Arm on your Mac, click “Install on iPhone” for this game again"
 #define K_REINSTALL "请在 Mac 上的 S2Arm 里对这款游戏再点一次「装到 iPhone」"
-static void note_settle(void) { s2a_ios_show_notice("magnifyingglass", "正在检查游戏资源", "马上就好。", 0, 0, 0); }
-static void note_wait(void) { s2a_ios_show_notice("arrow.down.circle.fill", "游戏资源还没传完", "传完会自动开始导入，不用做任何操作。请让本 App 留在前台、不要锁屏。", 0, 0, 0); }
-static void note_stalled(void) { s2a_ios_show_notice("pause.circle.fill", "游戏资源传到一半停住了", K_REINSTALL "，会接着传完；传完这里会自动继续。", 0, 0, 0); }
-static void note_done(void) { s2a_ios_show_notice("checkmark.circle.fill", "游戏资源导入完成", "请从后台划掉本 App，再重新打开就能进入游戏。", 0, 0, 0); }
-static void note_entering(void) { s2a_ios_show_notice("checkmark.circle.fill", "游戏资源导入完成", "正在进入游戏…", 0, 0, 0); }   // 有人等（预热路径）：导入完当场接着起游戏
-static void note_ready_reopen(void) { s2a_ios_show_notice("checkmark.circle.fill", "游戏资源已经放好", "请从后台划掉本 App，再重新打开就能进入游戏。", 0, 0, 0); }
-static void note_fail(void) { s2a_ios_show_notice("exclamationmark.triangle.fill", "游戏资源没导入成功", K_REINSTALL "，它会把缺的补上。还是不行的话，点下面「导出诊断包」发给我们。", 0, 0, 1); }
+#define N(sym, t_en, t_zh, b_en, b_zh, diag) s2a_ios_show_notice(sym, S2A_TR(t_en, t_zh), S2A_TR(b_en, b_zh), 0, 0, diag)
+static void note_settle(void) { N("magnifyingglass", "Checking Game Data", "正在检查游戏资源", "Just a moment.", "马上就好。", 0); }
+static void note_wait(void) { N("arrow.down.circle.fill", "Game Data Still Copying", "游戏资源还没传完", "The import starts on its own when the copy finishes — nothing to do. Keep this app open and don’t lock the screen.", "传完会自动开始导入，不用做任何操作。请让本 App 留在前台、不要锁屏。", 0); }
+static void note_stalled(void) { N("pause.circle.fill", "Game Data Copy Stopped", "游戏资源传到一半停住了", K_REINSTALL_EN " to finish the copy; this page continues on its own when it’s done.", K_REINSTALL "，会接着传完；传完这里会自动继续。", 0); }
+static void note_done(void) { N("checkmark.circle.fill", "Game Data Imported", "游戏资源导入完成", "Swipe this app away in the app switcher, then open it again to play.", "请从后台划掉本 App，再重新打开就能进入游戏。", 0); }
+static void note_entering(void) { N("checkmark.circle.fill", "Game Data Imported", "游戏资源导入完成", "Starting the game…", "正在进入游戏…", 0); }   // 有人等（预热路径）：导入完当场接着起游戏
+static void note_ready_reopen(void) { N("checkmark.circle.fill", "Game Data Ready", "游戏资源已经放好", "Swipe this app away in the app switcher, then open it again to play.", "请从后台划掉本 App，再重新打开就能进入游戏。", 0); }
+static void note_fail(void) { N("exclamationmark.triangle.fill", "Game Data Import Failed", "游戏资源没导入成功", K_REINSTALL_EN " to add what’s missing. If it still fails, tap “Export Diagnostics” below and send it to us.", K_REINSTALL "，它会把缺的补上。还是不行的话，点下面「导出诊断包」发给我们。", 1); }
+#define T_BROKEN S2A_TR("Game Data Incomplete", "游戏资源不完整")
+#define T_MISSING S2A_TR("Game Data Missing", "还缺游戏资源")
 static char g_imp_docs[1024], g_imp_name[256];
 // 缺资源包 / 资源包不全的说明页（app.m s2a_ios_show_pack_help：示意图 + 三步 + 「我已放好，重新检查」）。10-26 维护者：「壳上做好说明别闪退，
 //   打开发现缺资源包就告诉用户把启动器导出的资源包导到手机上指定位置」
@@ -410,13 +417,13 @@ void s2a_ios_hide_pack_help(void); void s2a_ios_hide_notice(void);
 //   不再一看到待导入的包就解（推送中途解 = 清单没到报「返回 -8」/ 在写的包被当截短包删掉）。说明页的「重新检查」= 立刻再判一次
 static dispatch_semaphore_t g_poll_sem, g_ready_sem; static _Atomic int g_gate_waiting;
 static void gate_recheck(void) { dispatch_semaphore_signal(g_poll_sem); }
-static void imp_progress(int done, int total) { s2a_ios_show_notice("shippingbox.fill", "正在导入游戏资源", "第一次要几分钟，请让本 App 留在前台、不要锁屏。", done, total, 0); }
+static void imp_progress(int done, int total) { s2a_ios_show_notice("shippingbox.fill", S2A_TR("Importing Game Data", "正在导入游戏资源"), S2A_TR("The first time takes a few minutes. Keep this app open and don’t lock the screen.", "第一次要几分钟，请让本 App 留在前台、不要锁屏。"), done, total, 0); }
 static void gate_show(int act, int again) {
     if (act == S2A_GATE_SETTLE) { note_settle(); return; }
     if (act == S2A_GATE_WAIT) { note_wait(); return; }
     if (act == S2A_GATE_STALLED) { note_stalled(); return; }
     int st = act == S2A_GATE_BROKEN ? S2A_IMPORT_BROKEN : S2A_IMPORT_NONE; char d[1024]; s2a_pack_help_detail(st, again, d, sizeof d);
-    s2a_ios_show_pack_help(st == S2A_IMPORT_BROKEN ? "游戏资源不完整" : "还缺游戏资源", d, g_imp_name, gate_recheck);
+    s2a_ios_show_pack_help(st == S2A_IMPORT_BROKEN ? T_BROKEN : T_MISSING, d, g_imp_name, gate_recheck);
 }
 static void *gate_thread(void *a) { (void)a;
     static const char *const act_name[] = {"就绪", "导入", "等包稳住", "资源还在传", "资源传输停住了", "没有游戏资源", "资源包不完整"};
@@ -483,7 +490,7 @@ int s2a_import_needs_ui(void) {
 static void break_recheck(void) {
     int st = s2a_import_state(g_imp_docs);
     if (st == S2A_IMPORT_READY) { s2a_ios_hide_pack_help(); note_ready_reopen(); return; }
-    char d[1024]; s2a_pack_help_detail(st, 1, d, sizeof d); s2a_ios_show_pack_help(st == S2A_IMPORT_BROKEN ? "游戏资源不完整" : "还缺游戏资源", d, g_imp_name, break_recheck);
+    char d[1024]; s2a_pack_help_detail(st, 1, d, sizeof d); s2a_ios_show_pack_help(st == S2A_IMPORT_BROKEN ? T_BROKEN : T_MISSING, d, g_imp_name, break_recheck);
 }
 int s2a_pack_help_on_break(void) {
     if (!imp_docs(g_imp_docs, sizeof g_imp_docs)) s2a_container_docs(g_imp_docs, sizeof g_imp_docs);   // 不查闸门的局（开发指定资源包）照旧核进程级 Documents
@@ -491,7 +498,7 @@ int s2a_pack_help_on_break(void) {
         if (!dn || !CFStringGetCString(dn, g_imp_name, sizeof g_imp_name, kCFStringEncodingUTF8)) strlcpy(g_imp_name, "S2Arm", sizeof g_imp_name); }
     int st = s2a_import_state(g_imp_docs); if (st == S2A_IMPORT_READY) return 0;
     LOG("【红】游戏 Break 时资源包%s：不退出，显示说明页", st == S2A_IMPORT_BROKEN ? "不完整" : "不在");
-    char d[1024]; s2a_pack_help_detail(st, 0, d, sizeof d); s2a_ios_show_pack_help(st == S2A_IMPORT_BROKEN ? "游戏资源不完整" : "还缺游戏资源", d, g_imp_name, break_recheck);
+    char d[1024]; s2a_pack_help_detail(st, 0, d, sizeof d); s2a_ios_show_pack_help(st == S2A_IMPORT_BROKEN ? T_BROKEN : T_MISSING, d, g_imp_name, break_recheck);
     return 1;
 }
 #endif

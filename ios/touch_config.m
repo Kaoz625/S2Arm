@@ -10,6 +10,7 @@
 #include "native.h"
 #include "s2a_unattended.h"
 #include "s2a_direct_prompt.h"   // 提示文案（与 launchers/shared/experience.v1.json prompts 逐字一致）
+#include "s2a_ui_lang.h"   // S2A_TR：英文缺省、界面语言中文才出中文
 
 uint64_t s2a_ap_frames(void);   // runtime/src/ap_host.c：上屏帧数
 int s2a_vpad_set_touch_only(int on, int manual, const char *why);   // vpad.m：主线程同步返回 1 切了 / 0 没切（本来就是或玩家手动选过）/ -1 失败
@@ -22,7 +23,7 @@ int s2a_touchcfg_apply(int mode) {
     if (r == 0) { LOG("触屏：游戏声明了触屏配置（模式 %d），没自动切（本来就是仅触屏，或玩家手动选过方案）", mode); return 0; }
     LOG("触屏：游戏声明了触屏配置（模式 %d），已自动切到仅触屏操作（本次运行，不改玩家设置）", mode);
     if (!s2a_unattended() && s2a_dprompt_notice)
-        s2a_dprompt_notice(@"", @S2A_DPROMPT_VPAD_TOUCH_AUTO, 0, 12);
+        s2a_dprompt_notice(@"", @(S2A_TR(S2A_DPROMPT_VPAD_TOUCH_AUTO_EN, S2A_DPROMPT_VPAD_TOUCH_AUTO)), 0, 12);
     return r;
 }
 

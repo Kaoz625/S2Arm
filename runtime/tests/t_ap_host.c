@@ -35,7 +35,7 @@ static _Atomic int g_ndump, g_fz;
 static int g_rep_fd = -1;
 static _Atomic int g_nnotice;
 static _Atomic int g_nclear;   // ⑦b：帧又走了收掉提示（钩子收到 NULL）
-static void hook_notice(const char *m) { if (!m) atomic_fetch_add(&g_nclear, 1); else if (strstr(m, "游戏画面卡住了")) atomic_fetch_add(&g_nnotice, 1); }
+static void hook_notice(const char *m) { if (!m) atomic_fetch_add(&g_nclear, 1); else if (strstr(m, "The game picture is stuck") && !strstr(m, "游戏画面卡住了")) atomic_fetch_add(&g_nnotice, 1); }   // 11-10 英文缺省（s2a_ui_zh = 0）
 static void hook_exit(int code) {
     char b[3] = { (char)code, (char)atomic_load(&g_ndump), (char)atomic_load(&g_nnotice) };
     ssize_t w = write(g_rep_fd, b, 3); (void)w; _exit(0);

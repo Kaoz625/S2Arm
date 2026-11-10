@@ -4,6 +4,7 @@
 #import <GameController/GameController.h>
 #import "s2a_l10n.h"
 #include "s2a_direct_prompt.h"
+#include "s2a_ui_lang.h"   // S2A_TR：英文缺省、界面语言中文才出中文
 #include "native.h"
 #include "s2a_unattended.h"
 #include <math.h>
@@ -28,7 +29,7 @@ static void answer(BOOL accept) { void (^cb)(BOOL) = g_onAnswer; g_onAnswer = ni
 // accept 为 nil = 只有「知道了」的确认条
 static void show(NSString *title, NSString *body, NSString *accept, NSString *decline, double seconds) {
     g_title.text = title; g_title.hidden = title.length == 0; g_body.text = body;
-    [g_accept setTitle:accept ?: @(S2A_DPROMPT_OK) forState:UIControlStateNormal];
+    [g_accept setTitle:accept ?: @(S2A_TR(S2A_DPROMPT_OK_EN, S2A_DPROMPT_OK)) forState:UIControlStateNormal];
     [g_decline setTitle:decline forState:UIControlStateNormal]; g_decline.hidden = accept == nil;
     g_banner.hidden = NO; [g_banner.superview bringSubviewToFront:g_banner]; NSInteger gen = ++g_gen;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(seconds * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -36,7 +37,7 @@ static void show(NSString *title, NSString *body, NSString *accept, NSString *de
 }
 static void poll(void) {
     // 存档不能原子提交（审计 P2-45，Mac 同款判定 runtime/src/direct_prompt.c）：第一次读到非 0 时用这条横幅提示一次
-    if (s2a_save_atomic_poll()) s2a_dprompt_notice(@S2A_DPROMPT_SAVE_ATOMIC_TITLE, @S2A_DPROMPT_SAVE_ATOMIC_IOS, 0, 15);
+    if (s2a_save_atomic_poll()) s2a_dprompt_notice(@(S2A_TR(S2A_DPROMPT_SAVE_ATOMIC_TITLE_EN, S2A_DPROMPT_SAVE_ATOMIC_TITLE)), @(S2A_TR(S2A_DPROMPT_SAVE_ATOMIC_IOS_EN, S2A_DPROMPT_SAVE_ATOMIC_IOS)), 0, 15);
 }
 
 static UIButton *button(SEL action, BOOL primary) {

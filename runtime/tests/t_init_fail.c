@@ -5,6 +5,7 @@
 //   上屏与诊断分开（11-02 维护者 内部词不上屏）：每个错误码的上屏正文 = 手写的玩家话术一句 + 下一步，不含内部词表里任何一个；
 //   内部摘要只在诊断里。负对照：把 s2a_init_fail_screen 换回旧逻辑（上屏「原因：<内部摘要>」），上屏用例应红。
 #include "s2a_init_fail.h"
+#include "s2a_ui_lang.h"
 #include "s2a_unattended.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,6 +46,7 @@ static const struct { int code; const char *id, *summary, *msg; } k_want[] = {
 #define NEXT_WANT "请从后台划掉本 App 再打开；仍不行请点「复制诊断」把诊断发给我们。"
 
 int main(void) {
+    s2a_ui_zh = 1;   // 下面的中文期望按中文界面（英文缺省另有一例）
     CASE("四格 1：iOS 人手局（没有 S2A_AUTOPLAY）→ 提示页", {
         WANT(s2a_init_fail_action(1, 0) == S2A_INIT_FAIL_PAGE);
         WANT(act_env(1, NULL) == S2A_INIT_FAIL_PAGE); WANT(act_env(1, "0") == S2A_INIT_FAIL_PAGE); WANT(act_env(1, "") == S2A_INIT_FAIL_PAGE); });
@@ -122,6 +124,11 @@ int main(void) {
         unlink(p); snprintf(p, sizeof p, "%s/exefs", d); rmdir(p); rmdir(d);
         char b[512]; s2a_init_fail_screen(b, sizeof b, S2A_INIT_FAIL_E_GAME_FILES);
         WANT(!strcmp(b, "游戏文件缺失，请重新导入：在 Mac 上的 S2Arm 里对这款游戏再点一次「装到 iPhone」。\n" NEXT_WANT)); });
+    CASE("上屏英文（11-10 英文默认：界面语言不是中文）：英文话术 + 英文下一步，与规格 en 逐字", {
+        s2a_ui_zh = 0; char b[512]; s2a_init_fail_screen(b, sizeof b, S2A_INIT_FAIL_E_GAME_FILES);
+        WANT(!strcmp(b, "Game files are missing. Import them again: in S2Arm on your Mac, choose “Install on iPhone” for this game again.\n"
+                        "Swipe this app away in the app switcher and open it again. If it still fails, tap “Copy diagnostics” and send it to us."));
+        s2a_init_fail_screen(b, sizeof b, 999); WANT(!strncmp(b, "Something went wrong during startup.\n", 37)); s2a_ui_zh = 1; });
 
     if (fails) { printf("✗ t_init_fail：%d / %d 例不通\n", fails, cases); return 1; }
     printf("✓ t_init_fail：%d 例全过\n", cases); return 0;

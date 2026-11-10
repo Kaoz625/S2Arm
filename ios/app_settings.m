@@ -7,6 +7,7 @@ int s2a_fps_cap_reason(void) __attribute__((weak_import));
 #import "cpatch_settings.h"
 #import "s2a_l10n.h"
 #include "s2a_direct_prompt.h"   // 「换一款游戏」文案（与 launchers/shared/experience.v1.json prompts 逐字一致，中英同屏）
+#include "s2a_ui_lang.h"   // S2A_TR：英文缺省、界面语言中文才出中文
 #include <math.h>
 
 void s2a_diag_export(void);
@@ -64,7 +65,7 @@ static UILabel *textLabel(UIFontTextStyle style) {
 }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     NSInteger g = self.groups[section].integerValue;
-    if (g == 5) return @S2A_DPROMPT_SWITCH_GAME_TITLE " · " S2A_DPROMPT_SWITCH_GAME_TITLE_EN;
+    if (g == 5) return @(S2A_TR(S2A_DPROMPT_SWITCH_GAME_TITLE_EN, S2A_DPROMPT_SWITCH_GAME_TITLE));   // 11-10：按界面语言只出一种（原先中英同屏）
     return @[S2AL(@"cpatch.group.gfx"), S2AL(@"settings.section.controls"), S2AL(@"settings.section.diagnostics"), S2AL(@"settings.section.developer"), S2AL(@"settings.section.saves")][g];
 }
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
@@ -264,7 +265,7 @@ static UILabel *textLabel(UIFontTextStyle style) {
     __weak S2ASettingsController *weakSelf = self;
     if (group == 5) {   // 多款容器换游戏：只读说明（中英两段），不可点、不退出进程
         UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
-        cell.textLabel.text = @S2A_DPROMPT_SWITCH_GAME_BODY "\n\n" S2A_DPROMPT_SWITCH_GAME_BODY_EN;
+        cell.textLabel.text = @(S2A_TR(S2A_DPROMPT_SWITCH_GAME_BODY_EN, S2A_DPROMPT_SWITCH_GAME_BODY));
         cell.textLabel.numberOfLines = 0; cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
         cell.textLabel.adjustsFontForContentSizeCategory = YES; cell.selectionStyle = UITableViewCellSelectionStyleNone;
         cell.accessibilityIdentifier = @"settings.switchGame";

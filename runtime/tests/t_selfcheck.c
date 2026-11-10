@@ -1,5 +1,6 @@
 // 自检提示单测（10-23 E01 iPad mini 6：权限签了却提示漏签）：权限 XML 解析 + 按事实给提示，期望句子手写
 #include "../src/native.h"
+#include "s2a_ui_lang.h"
 #include <stdio.h>
 #include <string.h>
 int s2a_ent_true(const char *xml, size_t n, const char *key);
@@ -38,6 +39,11 @@ int main(void) {
     eqs(o, "已签『提高内存上限』权限，读不到本款的 main.npdm，不知道要多大的地址空间（包不完整）。重装或补权限不能解决", "包里没有 main.npdm");
     // 屏上那句（11-02 维护者：人话 + 下一步，不出现地址上限 / main.npdm / MB）：期望按三种事实手写
     const char *t, *b;
+    // 11-10 英文默认：界面语言不是中文（缺省）出英文句（与规格 en 逐字），下面的中文用例先切到中文界面
+    s2a_selfcheck_screen(0, 0, 0, 32768, -1, &t, &b); eqs(t, "A required permission is missing", "屏上（英文缺省）：真没签 → 标题"); eqi(!!strstr(b, "Install on iPhone"), 1, "屏上（英文缺省）：真没签 → 叫重装");
+    s2a_selfcheck_screen(0, 0, 1, 32768, -1, &t, &b); eqs(t, "This iPhone can’t run this game yet", "屏上（英文缺省）：签了仍不够 → 本机型不支持");
+    s2a_selfcheck_screen(0, 1, 1, 0, 0, &t, &b); eqi(!!strstr(b, "32-bit address space"), 1, "屏上（英文缺省）：类型 0 → 正文说 32-bit address space");
+    s2a_ui_zh = 1;
     s2a_selfcheck_screen(0, 0, 0, 32768, -1, &t, &b); eqs(t, "安装少了一项必要权限", "屏上：真没签 → 标题"); eqi(!!strstr(b, "装到 iPhone"), 1, "屏上：真没签 → 叫重装");
     s2a_selfcheck_screen(0, 1, 1, 0, -1, &t, &b); eqs(t, "游戏资源不完整", "屏上：读不到 main.npdm → 资源不完整");
     s2a_selfcheck_screen(0, 0, 1, 32768, -1, &t, &b); eqs(t, "这台手机暂时玩不了这款游戏", "屏上：签了仍不够 → 本机型不支持");

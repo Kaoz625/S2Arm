@@ -1,6 +1,7 @@
 // 测试层（通用自动玩家，tests/autoplay/autoplay_host.h）要原生层提供的四项：上屏帧数、标称帧率、收局、写一行 host.log。
 // 上屏帧数由渲染器每上屏一帧调 s2a_frame_presented() 累加；标称帧率由各出图路径报进 s2a_nominal_fps_set()（见该函数）。s2a_ap_draws 归帧率能耗线、s2a_ap_audio_mark 归服务接入线，frames.tsv 由渲染器写。
 #include "native.h"
+#include "s2a_ui_lang.h"   // 上屏话术英文默认（S2A_TR）
 #include "dev_facilities.h"
 #include "../include/s2a_hud.h"
 #include <dlfcn.h>
@@ -141,8 +142,10 @@ static void *stall_watch(void *a) { s2a_thread_name("s2a-ap-stall");
             noticed = 1;
             // 停了多久按 idle 算（每格 250 ms），不是打现场的阈值秒数
             // 屏上只给人话（第几帧、停了几秒在下一行日志里，11-02 维护者：内部读数不上屏）；第一段当提示页标题
-            if (stall_exit_s() > 0) snprintf(shown, sizeof shown, "游戏画面卡住了\n\n请从后台划掉本 App，再重新打开。还是卡住的话，四指长按屏幕打开设置，导出诊断包发给我们。");
-            else snprintf(shown, sizeof shown, "游戏画面卡住了\n\n可能还在加载，可以再等一会儿；一直不动的话，请从后台划掉本 App，再重新打开。");
+            if (stall_exit_s() > 0) snprintf(shown, sizeof shown, "%s", S2A_TR("The game picture is stuck\n\nSwipe this app away in the app switcher and open it again. If it’s still stuck, long-press the screen with four fingers to open Settings, export the diagnostics and send them to us.",
+                                                                                "游戏画面卡住了\n\n请从后台划掉本 App，再重新打开。还是卡住的话，四指长按屏幕打开设置，导出诊断包发给我们。"));
+            else snprintf(shown, sizeof shown, "%s", S2A_TR("The game picture is stuck\n\nIt may still be loading, so you can wait a little longer. If nothing changes, swipe this app away in the app switcher and open it again.",
+                                                           "游戏画面卡住了\n\n可能还在加载，可以再等一会儿；一直不动的话，请从后台划掉本 App，再重新打开。"));
             LOG("出图停住看门：停在第 %llu 帧已 %d 秒，屏幕上提示玩家（S2A_STALL_EXIT_S=%d%s）", (unsigned long long)f, idle / 4, stall_exit_s(), stall_exit_s() > 0 ? " 秒后退出" : "，不退出，帧走了就收掉提示");
             if (g_notice_hook) g_notice_hook(shown); else if (msg) msg(shown);
         }

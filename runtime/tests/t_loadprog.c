@@ -1,5 +1,6 @@
 // 加载页进度模型单测（runtime/include/s2a_loadprog.h）：期望值按口径手算。每例 fork 一个子进程（模型的静态量从零开始），S2A_DOCS 指临时目录。
 #include "../src/native.h"
+#include "s2a_ui_lang.h"
 #include "s2a_loadprog.h"
 #include <sys/wait.h>
 #include <unistd.h>
@@ -17,8 +18,12 @@ static int eq(int s, const char *want) { char b[64]; s2a_load_eta_text(s, b, siz
 int main(void) {
     unsetenv("S2A_LOAD_SKIP_S"); unsetenv("S2A_LOAD_STALL_S"); unsetenv("S2A_LOAD_MAX_S");
     CASE("剩余时间文案逐秒：-1 估算中、3 不到 5 秒、42 → 42 秒、61 → 1 分 1 秒、80 → 1 分 20 秒、120 → 2 分钟", {
+        s2a_ui_zh = 1;   // 界面语言中文
         WANT(eq(-1, "正在估算剩余时间")); WANT(eq(3, "不到 5 秒")); WANT(eq(42, "42 秒")); WANT(eq(61, "1 分 1 秒"));
-        WANT(eq(80, "1 分 20 秒")); WANT(eq(120, "2 分钟")); });
+        WANT(eq(80, "1 分 20 秒")); WANT(eq(120, "2 分钟"));
+        s2a_ui_zh = 0;   // 缺省英文（11-10）
+        WANT(eq(-1, "Estimating time left")); WANT(eq(3, "Under 5 s")); WANT(eq(42, "42 s")); WANT(eq(61, "1 min 1 s"));
+        WANT(eq(80, "1 min 20 s")); WANT(eq(120, "2 min")); });
     CASE("阶段：起局 = 准备数据，第一次 tick = 优化画面，编完 = 进入游戏，首帧 = 收起", {
         s2a_load_begin(0, 1); WANT(V(1 * S).stage == S2A_LOAD_DATA);
         WANT(s2a_load_warm_tick(2 * S, 0, 100) == 0); WANT(V(2 * S).stage == S2A_LOAD_OPTIMIZE);

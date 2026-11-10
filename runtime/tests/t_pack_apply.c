@@ -2,6 +2,7 @@
 // 再核：.incoming 里的 tar 解完即删、.applied = manifest 的 index_sha256、unpack.log 一行无「返回 -」；坏包（路径含 ..）判失败且日志带「返回 -3」。
 #include "../src/native.h"
 #include "s2a_launch_ctx.h"
+#include "s2a_ui_lang.h"
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/resource.h>
@@ -198,9 +199,17 @@ int main(void) {
       snprintf(c2, sizeof c2, "printf 12345 > '%s/资源包/romfs/x.bin'", D); sh(c2);
       CHECK(s2a_import_state(D) == 0, "⑧ 补齐后应判就绪");
       // ⑨ 审计 P2-2：说明页正文。按过「重新检查」还不行，开头说「刚刚查过」；首次不说（文字手写）
-      char hd[1024]; s2a_pack_help_detail(2, 1, hd, sizeof hd); CHECK(!strncmp(hd, "刚刚查过，还是没有完整的资源包。", strlen("刚刚查过，还是没有完整的资源包。")), "⑨ 重新检查后仍缺：开头说刚刚查过");
+      //   11-10 英文默认：界面语言不是中文（s2a_ui_zh = 0，缺省）出英文、正文不含中文句子（只有资源包目录名）；s2a_ui_zh = 1 才出中文
+      char hd[1024]; s2a_ui_zh = 1;
+      s2a_pack_help_detail(2, 1, hd, sizeof hd); CHECK(!strncmp(hd, "刚刚查过，还是没有完整的资源包。", strlen("刚刚查过，还是没有完整的资源包。")), "⑨ 重新检查后仍缺：开头说刚刚查过");
       s2a_pack_help_detail(2, 0, hd, sizeof hd); CHECK(!strstr(hd, "刚刚查过") && strstr(hd, "外壳"), "⑨ 首次显示：不说刚刚查过");
       s2a_pack_help_detail(3, 1, hd, sizeof hd); CHECK(strstr(hd, "刚刚查过") && strstr(hd, "没拷全"), "⑨ 不完整重新检查后：也说刚刚查过");
+      s2a_ui_zh = 0;
+      s2a_pack_help_detail(2, 1, hd, sizeof hd); CHECK(!strncmp(hd, "Checked just now", 16) && strstr(hd, "shell") && !strstr(hd, "刚刚查过"), "⑨ 英文：重新检查后仍缺，开头说 Checked just now「%s」", hd);
+      s2a_pack_help_detail(2, 0, hd, sizeof hd); CHECK(!strstr(hd, "Checked just now") && strstr(hd, "shell") && !strstr(hd, "外壳"), "⑨ 英文：首次显示不说 Checked just now");
+      s2a_pack_help_detail(3, 1, hd, sizeof hd); CHECK(strstr(hd, "Checked just now") && strstr(hd, "Install on iPhone") && !strstr(hd, "没拷全"), "⑨ 英文：不完整重新检查后也说 Checked just now");
+      { int cjk = 0; for (const unsigned char *q = (const unsigned char *)hd; *q; q++) cjk += *q == 0xe7 || *q == 0xe6 || *q == 0xe5 || *q == 0xe4 || *q == 0xe8 || *q == 0xe9;
+        CHECK(cjk == 3, "⑨ 英文正文里的中文只有资源包目录名（3 个汉字），数到 %d", cjk); }
       // ⑩ 审计 P2-7：index.tsv 由 pack/pack.py 与 manifest.json 同写，出包保证在。manifest.json 在而 index.tsv 不在 / 打不开（自环软链 ELOOP，root 下也打不开）/ 读不了（目录，fopen 成功、读 EISDIR）
       //   → 期望都判 3 不完整；旧代码打不开当「老包不核」判 0 就绪。11-02 维护者：说明页不点名 index.tsv 这类内部词（缺哪个只进日志）
       snprintf(D, sizeof D, "%s/imp4", T); snprintf(c2, sizeof c2, "mkdir -p '%s/资源包/ctl' && echo '{}' > '%s/资源包/manifest.json' && echo n > '%s/资源包/ctl/control.nacp'", D, D, D); sh(c2);
@@ -209,7 +218,7 @@ int main(void) {
           if (k == 1) { snprintf(c2, sizeof c2, "cd '%s/资源包' && ln -s index.tsv index.tsv", D); sh(c2); }
           if (k == 2) { snprintf(c2, sizeof c2, "cd '%s/资源包' && rm index.tsv && mkdir index.tsv", D); sh(c2); }
           int got = s2a_import_state(D); s2a_pack_help_detail(got, 0, hd, sizeof hd);
-          CHECK(got == 3 && !strstr(hd, "index.tsv") && strstr(hd, "装到 iPhone"), "⑩ index.tsv %s：期望 3 不完整、说明页不点名 index.tsv、给出「装到 iPhone」 → %d「%s」", how[k], got, hd);
+          CHECK(got == 3 && !strstr(hd, "index.tsv") && strstr(hd, "Install on iPhone"), "⑩ index.tsv %s：期望 3 不完整、说明页不点名 index.tsv、给出「Install on iPhone」 → %d「%s」", how[k], got, hd);
       }
       // ⑪ 解包核对读 index.tsv 打不开（自环软链）→ 期望判失败、unpack.log 写明「index.tsv 打不开」（旧代码按缺 1 个文件报、例子为空）
       snprintf(D, sizeof D, "%s/imp5", T); snprintf(c2, sizeof c2, "mkdir -p '%s/资源包' && printf '{\"version\":2,\"index_sha256\":\"cafe05\"}' > '%s/资源包/manifest.json' && cd '%s/资源包' && ln -s index.tsv index.tsv", D, D, D); sh(c2);

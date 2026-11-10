@@ -1,5 +1,6 @@
 // 初启失败的出口：决策与诊断文本（契约与分支见 runtime/include/s2a_init_fail.h）。只用 libc，单测 runtime/tests/t_init_fail.c 直接链本文件。
 #include "s2a_init_fail.h"
+#include "s2a_ui_lang.h"   // 上屏话术英文默认（S2A_TR）
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -21,9 +22,9 @@ int s2a_init_fail_service_code(const char *game_data) {
 }
 
 // 码表（头文件 S2A_INIT_FAIL_CODES 展开）：下标 = 错误码，0 = 码表外
-static const struct { const char *id, *summary, *msg; } g_codes[S2A_INIT_FAIL_E_COUNT] = {
-    [S2A_INIT_FAIL_E_UNKNOWN] = {"unknown", "未登记的初启失败", S2A_INIT_FAIL_MSG_GENERIC},
-#define S2A_INIT_FAIL_ROW_(e, i, sum, m) [e] = {i, sum, m},
+static const struct { const char *id, *summary, *msg, *msg_en; } g_codes[S2A_INIT_FAIL_E_COUNT] = {   // msg_en：<话术宏>_EN（11-10 英文默认）
+    [S2A_INIT_FAIL_E_UNKNOWN] = {"unknown", "未登记的初启失败", S2A_INIT_FAIL_MSG_GENERIC, S2A_INIT_FAIL_MSG_GENERIC_EN},
+#define S2A_INIT_FAIL_ROW_(e, i, sum, m) [e] = {i, sum, m, m##_EN},
     S2A_INIT_FAIL_CODES(S2A_INIT_FAIL_ROW_)
 #undef S2A_INIT_FAIL_ROW_
 };
@@ -50,7 +51,7 @@ static int has_red(const char *s, size_t k) {
 // 提示页正文只取玩家话术：内部摘要不上屏（11-02 维护者）
 size_t s2a_init_fail_screen(char *out, size_t n, int code) {
     struct sbuf b = {out, n, 0}; if (n) out[0] = 0;
-    putf(&b, "%s\n%s", g_codes[known(code)].msg, S2A_INIT_FAIL_NEXT);
+    putf(&b, "%s\n%s", S2A_TR(g_codes[known(code)].msg_en, g_codes[known(code)].msg), S2A_TR(S2A_INIT_FAIL_NEXT_EN, S2A_INIT_FAIL_NEXT));
     return b.len;
 }
 

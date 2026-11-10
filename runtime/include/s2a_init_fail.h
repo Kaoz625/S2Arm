@@ -19,14 +19,23 @@ enum { S2A_INIT_FAIL_EXIT = 1, S2A_INIT_FAIL_PAGE = 2 };
 #define S2A_INIT_FAIL_LOG_TAIL (64 << 10)  // 只读 host.log 末尾这么多字节找红行
 // 提示页文案（玩家话术；改字面要同一提交改 experience.v1.json 的 init_fail_page.items，revision + 1）
 #define S2A_INIT_FAIL_TITLE       "游戏没能启动"
+#define S2A_INIT_FAIL_TITLE_EN "The game couldn’t start"
 #define S2A_INIT_FAIL_NEXT        "请从后台划掉本 App 再打开；仍不行请点「复制诊断」把诊断发给我们。"
+#define S2A_INIT_FAIL_NEXT_EN "Swipe this app away in the app switcher and open it again. If it still fails, tap “Copy diagnostics” and send it to us."
 #define S2A_INIT_FAIL_MSG_SERVICE "游戏需要的系统功能没能准备好。"
+#define S2A_INIT_FAIL_MSG_SERVICE_EN "System features the game needs couldn’t be prepared."
 #define S2A_INIT_FAIL_MSG_RUNTIME "本 App 没能准备好运行游戏。"
+#define S2A_INIT_FAIL_MSG_RUNTIME_EN "This app couldn’t get ready to run the game."
 #define S2A_INIT_FAIL_MSG_GAME    "游戏程序没能开始运行。"
+#define S2A_INIT_FAIL_MSG_GAME_EN "The game program couldn’t start running."
 #define S2A_INIT_FAIL_MSG_GENERIC "启动过程中出了问题。"
+#define S2A_INIT_FAIL_MSG_GENERIC_EN "Something went wrong during startup."
 #define S2A_INIT_FAIL_MSG_FILES   "游戏文件缺失，请重新导入：在 Mac 上的 S2Arm 里对这款游戏再点一次「装到 iPhone」。"
+#define S2A_INIT_FAIL_MSG_FILES_EN "Game files are missing. Import them again: in S2Arm on your Mac, choose “Install on iPhone” for this game again."
 #define S2A_INIT_FAIL_COPY        "复制诊断"
+#define S2A_INIT_FAIL_COPY_EN "Copy diagnostics"
 #define S2A_INIT_FAIL_COPIED      "已复制"
+#define S2A_INIT_FAIL_COPIED_EN "Copied"
 // 错误码：由失败出口显式指定（host_main.c failed_session 的调用点一处一个），不从摘要文本猜。
 //   X(枚举名, 码 id, 内部摘要（只进诊断）, 玩家话术宏)；码 id 与话术归类同样登记在 experience.v1.json 的 init_fail_page.codes。
 //   码表外的值按 S2A_INIT_FAIL_E_UNKNOWN（码 id unknown、通用句）处理

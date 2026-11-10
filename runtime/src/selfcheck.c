@@ -9,6 +9,7 @@
 #include "native.h"
 #include "as_type.h"
 #include "s2a_selfcheck_page.h"
+#include "s2a_ui_lang.h"   // 上屏话术英文默认（S2A_TR）
 #include <TargetConditionals.h>
 #include <string.h>
 #include <stdio.h>
@@ -64,10 +65,13 @@ void s2a_selfcheck_explain(char *out, size_t cap, int win_ok, int mem_ok, int en
 //   文案宏在 runtime/include/s2a_selfcheck_page.h（登记于 launchers/shared/experience.v1.json selfcheck_page）
 void s2a_selfcheck_screen(int win_ok, int mem_ok, int ent, uint64_t need_mb, int as_type, const char **title, const char **body) {
     if (win_ok && mem_ok) { *title = "自检通过"; *body = ""; return; }
-    if (as_unsupported(win_ok, need_mb, as_type)) { *title = S2A_SELFCHECK_AS_TITLE; *body = S2A_SELFCHECK_AS32_BODY; return; }
-    if (ent == 0) { *title = S2A_SELFCHECK_ENT_TITLE; *body = S2A_SELFCHECK_ENT_BODY; return; }
-    if (!win_ok && !need_mb) { *title = S2A_SELFCHECK_PKG_TITLE; *body = S2A_SELFCHECK_PKG_BODY; return; }
-    *title = S2A_SELFCHECK_DEVICE_TITLE; *body = S2A_SELFCHECK_DEVICE_BODY;
+    // 11-10 英文默认：<宏>_EN 是英文句（与规格 en 逐字一致），界面语言中文才取中文宏
+#define SC_(m) S2A_TR(m##_EN, m)
+    if (as_unsupported(win_ok, need_mb, as_type)) { *title = SC_(S2A_SELFCHECK_AS_TITLE); *body = SC_(S2A_SELFCHECK_AS32_BODY); return; }
+    if (ent == 0) { *title = SC_(S2A_SELFCHECK_ENT_TITLE); *body = SC_(S2A_SELFCHECK_ENT_BODY); return; }
+    if (!win_ok && !need_mb) { *title = SC_(S2A_SELFCHECK_PKG_TITLE); *body = SC_(S2A_SELFCHECK_PKG_BODY); return; }
+    *title = SC_(S2A_SELFCHECK_DEVICE_TITLE); *body = SC_(S2A_SELFCHECK_DEVICE_BODY);
+#undef SC_
 }
 // 内存门槛只拦没签权限的（#29：4500 MB 是「有没有签权限」的分界，不是游戏的需求；6 GB 机型签了权限也可能不到，不能因此把所有游戏挡住）
 int s2a_selfcheck_mem_blocks(int mem_ok, int ent) { return !mem_ok && ent == 0; }

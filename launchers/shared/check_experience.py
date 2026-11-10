@@ -276,8 +276,10 @@ def main() -> int:
             ok(imacros[macro] == item["zh-Hans"],
                f"init_fail_page: {macro} 与头文件不一致\n  头文件: {imacros[macro]}\n  规格:   {item['zh-Hans']}")
         ok(bool(item.get("en", "").strip()), f"init_fail_page {item['id']}: 缺英文")
+        # 11-10 英文默认：iOS 按界面语言取 <宏>_EN（runtime/include/s2a_ui_lang.h S2A_TR），与规格 en 逐字一致
+        ok(imacros.get(macro + "_EN") == item.get("en"), f"init_fail_page: {macro}_EN 与规格 en 不一致（或头文件缺）\n  头文件: {imacros.get(macro + '_EN')}\n  规格:   {item.get('en')}")
         ok(item["zh-Hans"] not in localizable, f"Localizable.json 重复共享文本：{item['zh-Hans']}")
-    spec_imacros = {i["macro"] for i in ifp["items"]}
+    spec_imacros = {i["macro"] for i in ifp["items"]} | {i["macro"] + "_EN" for i in ifp["items"]}
     ok(spec_imacros == set(imacros),
        "init_fail_page.items 与头文件的文案宏不是一一对应\n  只在头文件: %s\n  只在规格: %s"
        % (sorted(set(imacros) - spec_imacros), sorted(spec_imacros - set(imacros))))
@@ -310,8 +312,9 @@ def main() -> int:
             ok(smacros[macro] == item["zh-Hans"],
                f"selfcheck_page: {macro} 与头文件不一致\n  头文件: {smacros[macro]}\n  规格:   {item['zh-Hans']}")
         ok(bool(item.get("en", "").strip()), f"selfcheck_page {item['id']}: 缺英文")
+        ok(smacros.get(macro + "_EN") == item.get("en"), f"selfcheck_page: {macro}_EN 与规格 en 不一致（或头文件缺）\n  头文件: {smacros.get(macro + '_EN')}\n  规格:   {item.get('en')}")
         ok(item["zh-Hans"] not in localizable, f"Localizable.json 重复共享文本：{item['zh-Hans']}")
-    spec_smacros = {i["macro"] for i in scp["items"]}
+    spec_smacros = {i["macro"] for i in scp["items"]} | {i["macro"] + "_EN" for i in scp["items"]}
     ok(spec_smacros == set(smacros),
        "selfcheck_page.items 与头文件的文案宏不是一一对应\n  只在头文件: %s\n  只在规格: %s"
        % (sorted(set(smacros) - spec_smacros), sorted(spec_smacros - set(smacros))))

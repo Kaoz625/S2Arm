@@ -19,6 +19,11 @@ extern "C" {
 #define S2A_DGUARD_MSG "请先把 Mac 上的 S2Arm 更新到最新版，再对这款游戏点「装到 iPhone」重新装一次；还是不行，请点「导出诊断包」把诊断包发给我们反馈。"
 #define S2A_DGUARD_DIAG "导出诊断包"
 #define S2A_DGUARD_GO "仍然启动"
+// 英文（11-10 英文默认，iOS 按界面语言 S2A_TR 取，runtime/include/s2a_ui_lang.h）
+#define S2A_DGUARD_TITLE_EN "This game failed to start the last few times"
+#define S2A_DGUARD_MSG_EN "First update S2Arm on your Mac to the latest version, then click “Install on iPhone” for this game to reinstall it. If it still fails, tap “Export Diagnostics” and send us the diagnostics."
+#define S2A_DGUARD_DIAG_EN "Export Diagnostics"
+#define S2A_DGUARD_GO_EN "Start Anyway"
 // 起局前要不要先起界面（main 里判，还不知道程序号）：记录里已连续失败 ≥ S2A_DGUARD_LIMIT 次 = 1；自动化 / 开发工具起的局（s2a_unattended.h）恒 0，
 //   起局时满 3 次就记日志收局、不停在提示页。只读文件，不改
 int s2a_dguard_needs_ui(void);

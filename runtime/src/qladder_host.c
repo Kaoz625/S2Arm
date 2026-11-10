@@ -9,6 +9,7 @@
 #include "s2a_qladder.h"
 #include "s2a_docs.h"   // 文档根唯一取法
 #include "s2a_unattended.h"
+#include "s2a_ui_lang.h"   // 上屏话术英文默认（S2A_TR）
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -55,7 +56,7 @@ static void apply(int t, int boot) {
     if (boot) return;   // 起局档位已在构造期设好；对不上（启动环境显式给了）就按启动环境，不改
     if (s2a_widen_game()) { g_pend_docked = want;   // 宽屏第二层按起局档位装的表：局中切档补丁对不上，下次启动生效
         LOG("档位梯子：%s 要切到%s，本款宽屏第二层按起局档位装表，下次启动生效", tier_name(g_kind, t), want ? "主机" : "掌机");
-        if (!s2a_unattended()) s2a_ios_ladder_note(want ? "画面档位已调高，下次启动游戏生效" : "已调到掌机档以保持流畅，下次启动游戏生效");
+        if (!s2a_unattended()) s2a_ios_ladder_note(want ? S2A_TR("Graphics level raised; takes effect the next time you start the game", "画面档位已调高，下次启动游戏生效") : S2A_TR("Switched to handheld mode to keep things smooth; takes effect the next time you start the game", "已调到掌机档以保持流畅，下次启动游戏生效"));
         return; }
     s2a_console_mode_set(want); g_pend_docked = -1;
 }
