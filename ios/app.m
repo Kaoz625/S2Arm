@@ -12,6 +12,7 @@
 #import "app_settings.h"
 #import "play_layout.h"
 #import "notice.h"
+#import "ota_download.h"   // OTA 资源包下载（无线装机，ota_download.m）
 #include "s2a_session.h"
 #include "s2a_dguard.h"
 #include "s2a_init_fail.h"   // 初启失败页的标题 / 按钮文案（与 launchers/shared/experience.v1.json init_fail_page 逐字一致；中英按 App 语言取，S2APICK）
@@ -761,6 +762,10 @@ static void audio_category_apply(void) {
         LOG("[热] 热状态变为 %ld（0 正常 1 一般 2 严重 3 危急），帧 %llu", (long)NSProcessInfo.processInfo.thermalState, (unsigned long long)s2a_ap_frames()); }];
 }
 - (UIInterfaceOrientationMask)application:(UIApplication *)app supportedInterfaceOrientationsForWindow:(UIWindow *)w { return UIInterfaceOrientationMaskAllButUpsideDown; }
+// OTA 资源包下载的后台会话：系统在后台下完一段后唤醒 App，交回完成回调（ota_download.m 重建同名会话接着下一段）
+- (void)application:(UIApplication *)app handleEventsForBackgroundURLSession:(NSString *)identifier completionHandler:(void (^)(void))completionHandler {
+    (void)app; if (!s2a_ota_background_events(identifier, completionHandler)) completionHandler();
+}
 - (void)applicationWillTerminate:(UIApplication *)app {
     s2a_guest_run_mark(0);   // 正常终止不算「前台死掉」
     if (s2a_host_boot_pending()) return;
@@ -893,7 +898,8 @@ static __weak UIWindow *g_lib_window;
 int s2a_import_state_game_quick(const char *proc_docs, const char *gid);   // pack_apply.c
 static int game_pack_state(const char *gid) { char d[1024]; s2a_container_docs(d, sizeof d); return s2a_import_state_game_quick(d, gid); }
 static void test_picker(void);
-void s2a_shell_library_appeared(void) { static int once; if (!once++) { BOOT_MARK("游戏库界面可操作"); test_picker(); } }
+void s2a_ota_library_refresh(void) { if (s2a_shell_refresh) s2a_shell_refresh(); }   // ota_download.m 下完一款后调
+void s2a_shell_library_appeared(void) { static int once; if (!once++) { BOOT_MARK("游戏库界面可操作"); test_picker(); s2a_ota_library_appeared(); } }
 int s2a_game_install_state(const char *proc_docs, const char *gid);   // pack_apply.c
 int s2a_shell_game_install_state(const char *gid) { char d[1024]; s2a_container_docs(d, sizeof d); return s2a_game_install_state(d, gid); }
 // 库里后台解开传完的那款（装机阶段 2，s2a_shell.h）：同一条 s2a_pack_apply（解包日志、.applied、清旧文件都同起局闸门），同时只解一款；
@@ -1120,6 +1126,7 @@ static void library_pack_help_show(NSString *gid, BOOL again, int st) {   // 主
     UIAlertController *a = [UIAlertController alertControllerWithTitle:broken ? S2AL(@"app.library.broken.title") : S2AL(@"app.library.missing.title") message:body preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:S2AL(@"common.later") style:UIAlertActionStyleCancel handler:^(UIAlertAction *x) { (void)x; if (s2a_shell_refresh) s2a_shell_refresh(); }]];
     [a addAction:[UIAlertAction actionWithTitle:S2AL(@"app.packHelp.recheck") style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) { (void)x; library_pack_help(gid, YES); }]];
+    s2a_ota_add_download_action(a, gid);   // 配了下载目录且目录里有这款：加「下载」（离家无线装机，ota_download.m）
     [top presentViewController:a animated:YES completion:nil];
 }
 void s2a_shell_pick_game_data(const char *gid) {   // 主线程（s2a_shell.h 约定）
@@ -1180,6 +1187,7 @@ static void cloud_sync_done(void *ctx) {
         [self showLibrary];
         { const char *e = getenv("S2A_NO_KEY_WINDOW"); if (e && !strcmp(e, "0")) [self.window makeKeyAndVisible]; else self.window.hidden = NO; }
         LOG("iOS 壳：窗口已建 %.0fx%.0f（场景，多款容器游戏库）", self.window.bounds.size.width, self.window.bounds.size.height);
+        if (options.URLContexts.count) { NSSet *u = options.URLContexts; dispatch_async(dispatch_get_main_queue(), ^{ [self openOtaURLs:u]; }); }   // 冷启动由下载地址打开：库挂好后再接
         return;
     }
     UIViewController *vc = [S2AGameVC new]; vc.view.backgroundColor = UIColor.blackColor; g_root = vc.view;
@@ -1210,6 +1218,15 @@ static void cloud_sync_done(void *ctx) {
     if (g_help) [g_root bringSubviewToFront:g_help];   // 老路径说明页先于手柄建，压回最上
     s2a_ios_root_view_ready();   // RenderLoop can now attach below the virtual controls.
 }
+// s2arm://download?catalog=…（OTA 资源包下载，ota_download.m）：只在多款容器的游戏库里接（一进程一款，选过游戏后不再下别的款）
+- (void)openOtaURLs:(NSSet<UIOpenURLContext *> *)ctxs {
+    for (UIOpenURLContext *c in ctxs) {
+        if (![c.URL.scheme.lowercaseString isEqualToString:@"s2arm"]) continue;
+        if (!s2a_launch_ctx_container() || atomic_load(&g_game_picked)) { LOG("OTA：不在游戏库（单款包或已选了游戏），不接下载地址"); continue; }
+        s2a_ota_open_url(c.URL);
+    }
+}
+- (void)scene:(UIScene *)scene openURLContexts:(NSSet<UIOpenURLContext *> *)URLContexts { (void)scene; [self openOtaURLs:URLContexts]; }
 - (void)windowScene:(UIWindowScene *)windowScene performActionForShortcutItem:(UIApplicationShortcutItem *)item completionHandler:(void (^)(BOOL))done {
     (void)windowScene; UIViewController *top = self.window.rootViewController; while (top.presentedViewController) top = top.presentedViewController;
     home_shortcut(item.type, NO, top); done(YES);

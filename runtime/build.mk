@@ -204,6 +204,7 @@ ios: ios-ns2pro
 	@/usr/bin/plutil -insert NSLocalNetworkUsageDescription -string "Local multiplayer: find other devices on the same Wi-Fi and join the same room." $(IOS_APP)/Info.plist; /usr/bin/plutil -insert NSBonjourServices -json '["_s2arm-ldn._tcp"]' $(IOS_APP)/Info.plist   # ldn_lan.m；主值英文（开发区域 en），中文在 ios/l10n/zh-Hans.lproj/InfoPlist.strings（#316，上面 cp -R 一并拷进包）
 	@/usr/bin/plutil -insert UISupportedExternalAccessoryProtocols -json '["com.xiaoji.M2boot"]' $(IOS_APP)/Info.plist   # 配件协议白名单：没声明就开不了 EASession（ios/ea_rumble.h，#462）
 	@/usr/bin/plutil -insert NSBluetoothAlwaysUsageDescription -string "Connect a Switch 2 Pro Controller when enabled in Settings." $(IOS_APP)/Info.plist
+	@/usr/bin/plutil -insert CFBundleURLTypes -json '[{"CFBundleURLName":"dev.s2arm.ota","CFBundleURLSchemes":["s2arm"]}]' $(IOS_APP)/Info.plist   # s2arm://download?catalog=…：OTA 资源包下载（ios/ota_download.m、docs/OTA_DOWNLOAD.md）
 	@/usr/bin/plutil -insert UIApplicationSceneManifest -json '{"UIApplicationSupportsMultipleScenes":false,"UISceneConfigurations":{"UIWindowSceneSessionRoleApplication":[{"UISceneConfigurationName":"Default","UISceneDelegateClassName":"S2ASceneDelegate"}]}}' $(IOS_APP)/Info.plist   # iOS 27 场景生命周期（27.1 SDK 强制 UIScene adoption，否则启动即崩）：指向 app.m 的 S2ASceneDelegate
 	@echo "iOS App：$(IOS_APP)（$$(du -sh $(IOS_APP) | cut -f1)，包名 $(IOS_BUNDLE)，未签名）"
 
