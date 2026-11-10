@@ -76,7 +76,59 @@ static void *g_sp_sev;
 static void g_holder(void *holder, void *sev) { (void)holder; CHECK(((fake_sev *)sev)->handle >= 0x100); g_sp_sev = sev; g_holders++; }
 static void g_destroy(void *sev) { ((fake_sev *)sev)->destroyed = 1; g_destroys++; }
 static int g_trywait(void *sev) { fake_sev *s = sev; int i = (int)s->handle - 0x100; int v = atomic_load(&g_ev[i].sig); if (v && s->mode == 1) atomic_store(&g_ev[i].sig, 0); return v; }
+// 游戏 sdk 的软件 Opus 解码器替身（硬件 Opus 接管换成它）：状态里记采样率 / 声道 / 工作缓冲；「解码」按包第一个字节填满一帧 960 个样本，
+//   第一个字节 0xEE 的包回失败（期望接管层出静音）；Finalize / Reset 计次。工作缓冲大小 = 0x100 + 声道 × 0x40（与真 sdk 无关，只核接管层原样转交）
+typedef struct { int rate, ch, streams, stereo, inited; void *work; uint64_t wsize; } fake_opus;
+static int g_opus_fini, g_opus_reset, g_opus_dec_calls;
+static uint64_t fo_wsize(int rate, int ch) { (void)rate; return 0x100 + (uint64_t)ch * 0x40; }
+static uint32_t fo_init(void *s, int rate, int ch, void *buf, uint64_t size) {
+    if (ch < 1 || ch > 2) return 0x3a6f;
+    fake_opus *o = s; CHECK(buf && size == fo_wsize(rate, ch)); o->rate = rate; o->ch = ch; o->work = buf; o->wsize = size; o->inited = 1; return 0;
+}
+static uint32_t fo_decode(void *s, uint64_t *used, int *samples, int16_t *out, uint64_t out_size, const void *in, uint64_t n) {
+    fake_opus *o = s; const uint8_t *p = in; g_opus_dec_calls++;
+    CHECK(o->inited && n >= 8);
+    uint32_t len = (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];   // 任天堂 8 字节头：大端包长、终止区间
+    CHECK(len + 8 == n);
+    if (p[8] == 0xEE) return 0x3a6f;
+    CHECK(out_size >= 960u * (uint64_t)o->ch * 2);
+    for (int i = 0; i < 960 * o->ch; i++) out[i] = (int16_t)p[8];
+    *used = n; *samples = 960; return 0;
+}
+static void fo_fini(void *s) { ((fake_opus *)s)->inited = 0; g_opus_fini++; }
+static void fo_reset(void *s) { (void)s; g_opus_reset++; }
+static int fo_rate(const void *s) { return ((const fake_opus *)s)->rate; }
+static int fo_ch(const void *s) { return ((const fake_opus *)s)->ch; }
+static uint64_t fo_ms_wsize(int rate, int ch, int streams, int stereo) { (void)rate; return 0x200 + (uint64_t)(ch + streams + stereo) * 0x10; }
+static uint32_t fo_ms_init(void *s, int rate, int ch, int streams, int stereo, const uint8_t *map, void *buf, uint64_t size) {
+    fake_opus *o = s; CHECK(map && buf && size == fo_ms_wsize(rate, ch, streams, stereo)); o->rate = rate; o->ch = ch; o->streams = streams; o->stereo = stereo; o->inited = 1; return 0;
+}
+static int fo_ms_total(const void *s) { return ((const fake_opus *)s)->streams; }
+static int fo_ms_stereo(const void *s) { return ((const fake_opus *)s)->stereo; }
+static void *opus_fake(const char *n) {
+    static const struct { const char *n; void *f; } t[] = {
+        { "_ZN2nn5codec28GetOpusDecoderWorkBufferSizeEii", (void *)fo_wsize },
+        { "_ZN2nn5codec21InitializeOpusDecoderEPNS0_15OpusDecoderTypeEiiPvm", (void *)fo_init },
+        { "_ZN2nn5codec21DecodeOpusInterleavedEPNS0_15OpusDecoderTypeEPmPiPsmPKvm", (void *)fo_decode },
+        { "_ZN2nn5codec19FinalizeOpusDecoderEPNS0_15OpusDecoderTypeE", (void *)fo_fini },
+        { "_ZN2nn5codec16ResetOpusDecoderEPNS0_15OpusDecoderTypeE", (void *)fo_reset },
+        { "_ZN2nn5codec24GetOpusDecoderSampleRateEPKNS0_15OpusDecoderTypeE", (void *)fo_rate },
+        { "_ZN2nn5codec26GetOpusDecoderChannelCountEPKNS0_15OpusDecoderTypeE", (void *)fo_ch },
+        { "_ZN2nn5codec39GetOpusMultiStreamDecoderWorkBufferSizeEiiii", (void *)fo_ms_wsize },
+        { "_ZN2nn5codec32InitializeOpusMultiStreamDecoderEPNS0_26OpusMultiStreamDecoderTypeEiiiiPKhPvm", (void *)fo_ms_init },
+        { "_ZN2nn5codec30FinalizeOpusMultiStreamDecoderEPNS0_26OpusMultiStreamDecoderTypeE", (void *)fo_fini },
+        { "_ZN2nn5codec35GetOpusMultiStreamDecoderSampleRateEPKNS0_26OpusMultiStreamDecoderTypeE", (void *)fo_rate },
+        { "_ZN2nn5codec37GetOpusMultiStreamDecoderChannelCountEPKNS0_26OpusMultiStreamDecoderTypeE", (void *)fo_ch },
+        { "_ZN2nn5codec41GetOpusMultiStreamDecoderTotalStreamCountEPKNS0_26OpusMultiStreamDecoderTypeE", (void *)fo_ms_total },
+        { "_ZN2nn5codec42GetOpusMultiStreamDecoderStereoStreamCountEPKNS0_26OpusMultiStreamDecoderTypeE", (void *)fo_ms_stereo },
+        { "_ZN2nn5codec27ResetOpusMultiStreamDecoderEPNS0_26OpusMultiStreamDecoderTypeE", (void *)fo_reset },
+        { "_ZN2nn5codec32DecodeOpusMultiStreamInterleavedEPNS0_26OpusMultiStreamDecoderTypeEPmPiPsmPKvm", (void *)fo_decode },
+    };
+    for (unsigned i = 0; i < sizeof t / sizeof *t; i++) if (!strcmp(n, t[i].n)) return t[i].f;
+    return NULL;
+}
 void *guest_sym(const char *n) {
+    { void *o = opus_fake(n); if (o) return o; }
     if (strstr(n, "AttachReadableHandleToSystemEvent")) return (void *)g_attach;
     if (strstr(n, "InitializeMultiWaitHolder")) return (void *)g_holder;
     if (strstr(n, "DestroySystemEvent")) return (void *)g_destroy;
@@ -588,6 +640,118 @@ int main(int argc, char **argv) {
         CHECK(tB->pool && tB->pool->mem == memB);   // pool_t 的 mem 字段也已更新
 
         pfin(poolB); free(memA); free(memB);
+    }
+
+    // ---------- 硬件 Opus（11-10 Orbitals：GetHardwareOpusDecoderManagerWorkBufferSize 进 sdk hwacod，hwopus 命令 100 没有，对空会话调虚函数 SIGSEGV）----------
+    {
+        int nvn2_opus_live(void);
+        #define OPN(x) "_ZN2nn5codec" x
+        typedef uint64_t (*f_mws)(int, int, int64_t, int, int);
+        typedef uint32_t (*f_minit)(void *, void *, int, int, int64_t, int, int, void *, uint64_t);
+        typedef uint32_t (*f_dinit)(void *, int, int, int64_t, void *);
+        typedef int (*f_cnt)(const void *);
+        typedef uint32_t (*f_enq)(void *, uint64_t *, const void *, uint64_t);
+        typedef uint32_t (*f_deq)(void *, int *, int16_t *, uint64_t);
+        typedef uint32_t (*f_res)(void *);
+        typedef void (*f_v)(void *);
+        // 入口：Orbitals 导入的 34 个 Opus 名字里硬件那族全由宿主接（宿主实现、不是红桩）；软件解码器与多流管理器形态照原路径
+        static const char *const hw[] = {
+            OPN("43GetHardwareOpusDecoderManagerWorkBufferSizeEiiNS_8TimeSpanEii"),
+            OPN("36InitializeHardwareOpusDecoderManagerEPNS0_30HardwareOpusDecoderManagerTypeEPNS_2os15SystemEventTypeEiiNS_8TimeSpanEiiPvm"),
+            OPN("34FinalizeHardwareOpusDecoderManagerEPNS0_30HardwareOpusDecoderManagerTypeE"),
+            OPN("46GetHardwareOpusDecoderManagerFreeIoBufferCountEPKNS0_30HardwareOpusDecoderManagerTypeE"),
+            OPN("29InitializeHardwareOpusDecoderEPNS0_23HardwareOpusDecoderTypeEiiNS_8TimeSpanEPNS0_30HardwareOpusDecoderManagerTypeE"),
+            OPN("29InitializeHardwareOpusDecoderEPNS0_23HardwareOpusDecoderTypeEiiPvmi"),
+            OPN("36EnqueueOpusDataToHardwareOpusDecoderEPNS0_23HardwareOpusDecoderTypeEPmPKvm"),
+            OPN("34ExecuteHardwareOpusDecoderDecodingEPNS0_30HardwareOpusDecoderManagerTypeE"),
+            OPN("48DequeuePcmInterleavedDataFromHardwareOpusDecoderEPNS0_23HardwareOpusDecoderTypeEPiPsm"),
+            OPN("47GetHardwareOpusDecoderWaitingDecodeRequestCountEPKNS0_23HardwareOpusDecoderTypeE"),
+            OPN("49GetHardwareOpusDecoderExecutingDecodeRequestCountEPKNS0_23HardwareOpusDecoderTypeE"),
+            OPN("49GetHardwareOpusDecoderCompletedDecodeRequestCountEPKNS0_23HardwareOpusDecoderTypeE"),
+            OPN("27FinalizeHardwareOpusDecoderEPNS0_23HardwareOpusDecoderTypeE"),
+            OPN("24ResetHardwareOpusDecoderEPNS0_23HardwareOpusDecoderTypeE"),
+            OPN("32GetHardwareOpusDecoderSampleRateEPKNS0_23HardwareOpusDecoderTypeE"),
+            OPN("34GetHardwareOpusDecoderChannelCountEPKNS0_23HardwareOpusDecoderTypeE"),
+            OPN("33DecodeOpusInterleavedWithHardwareEPNS0_23HardwareOpusDecoderTypeEPmPiPsmPKvm"),
+            OPN("36GetHardwareOpusDecoderWorkBufferSizeEiii"),
+        };
+        for (unsigned i = 0; i < sizeof hw / sizeof *hw; i++) { void *f = s2a_codec_entry(hw[i]); CHECK(f && !nvn2_red_of(f)); }
+        CHECK(!s2a_codec_entry(OPN("28GetOpusDecoderWorkBufferSizeEii")) && !s2a_codec_entry(OPN("21DecodeOpusInterleavedEPNS0_15OpusDecoderTypeEPmPiPsmPKvm")));
+        CHECK(!s2a_codec_entry(OPN("47InitializeHardwareOpusMultiStreamDecoderManagerEPNS0_39HardwareOpusMultiStreamDecoderManagerTypeEPNS_2os15SystemEventTypeEiiiiNS_8TimeSpanEiiPvm")));
+        // 崩溃那一步：Orbitals main+0x6a46ea4 的参数（48 kHz、128 个解码器、255 个 I/O 缓冲）——宿主答，不进 sdk（替身 guest_sym 没有 hwacod 名字，进了就中止）
+        CHECK(((f_mws)E(hw[0]))(48000, 1, 0x2d00, 0x80, 0xff) > 0);
+        int live0 = nvn2_opus_live();
+
+        // 老的 C 接口：工作缓冲按软件解码器给、原样转交；采样率 / 声道 / 解码 / Reset / Finalize 都到软件解码器
+        {
+            _Alignas(16) uint8_t gd[0x40] = {0}; uint64_t ws = ((uint64_t (*)(int, int, int))E(hw[17]))(48000, 2, 0);
+            CHECK(ws == 0x100 + 2 * 0x40);
+            void *work = malloc(ws);
+            CHECK(((uint32_t (*)(void *, int, int, void *, uint64_t, int))E(hw[5]))(gd, 48000, 2, work, ws, 0) == 0);
+            CHECK(((f_cnt)E(hw[14]))(gd) == 48000 && ((f_cnt)E(hw[15]))(gd) == 2 && nvn2_opus_live() == live0 + 1);
+            uint8_t pkt[8 + 3] = {0, 0, 0, 3, 0, 0, 0, 0, 7, 1, 2}; static int16_t pcm[960 * 2]; uint64_t used = 0; int smp = 0;
+            CHECK(((uint32_t (*)(void *, uint64_t *, int *, int16_t *, uint64_t, const void *, uint64_t))E(hw[16]))(gd, &used, &smp, pcm, sizeof pcm, pkt, sizeof pkt) == 0);
+            CHECK(used == sizeof pkt && smp == 960 && pcm[0] == 7 && pcm[960 * 2 - 1] == 7);
+            int r0 = g_opus_reset, f0 = g_opus_fini;
+            ((f_v)E(hw[13]))(gd); CHECK(g_opus_reset == r0 + 1);
+            ((f_v)E(hw[12]))(gd); CHECK(g_opus_fini == f0 + 1 && nvn2_opus_live() == live0);
+            ((f_v)E(hw[12]))(gd); CHECK(g_opus_fini == f0 + 1);   // 二次 Finalize 不再放
+            free(work);
+        }
+
+        // SDK 21 管理器：4 个 I/O 缓冲、2 个解码器（单声道 + 双声道）
+        _Alignas(16) uint8_t gm[0x18] = {0}; _Alignas(16) uint8_t sev[0x40] = {0}; uint8_t mbuf[0x1000];
+        int nev0 = g_nev;
+        CHECK(((f_minit)E(hw[1]))(gm, sev, 48000, 2, 20000000, 2, 4, mbuf, sizeof mbuf) == 0);
+        CHECK(*(void **)gm != NULL && g_nev == nev0 + 1 && ((fake_sev *)sev)->handle >= 0x100 && ((fake_sev *)sev)->mode == 1);   // 游戏凭第一个字认已初始化；事件挂上、自动清除
+        CHECK(((f_cnt)E(hw[3]))(gm) == 4 && ((f_cnt)E(OPN("47GetHardwareOpusDecoderManagerTotalIoBufferCountEPKNS0_30HardwareOpusDecoderManagerTypeE")))(gm) == 4);
+        typedef int (*f_val)(const void *, int, int, int64_t);
+        f_val val = (f_val)E(OPN("49ValidateHardwareOpusDecoderManagerDecoderResourceEPKNS0_30HardwareOpusDecoderManagerTypeEiiNS_8TimeSpanE"));
+        _Alignas(16) uint8_t da[0x30] = {0}, db[0x30] = {0};
+        CHECK(val(gm, 48000, 1, 20000000) == 1);
+        CHECK(((f_dinit)E(hw[4]))(da, 48000, 1, 20000000, gm) == 0 && ((f_dinit)E(hw[4]))(db, 48000, 2, 20000000, gm) == 0);
+        CHECK(val(gm, 48000, 1, 20000000) == 0);   // 两个都用了
+        _Alignas(16) uint8_t dc[0x30] = {0};
+        CHECK(((f_dinit)E(hw[4]))(dc, 48000, 6, 20000000, gm) != 0);   // 软件解码器拒的声道数：初始化原样回失败，不登记
+        CHECK(nvn2_opus_live() == live0 + 2);
+        CHECK(((void *(*)(void *))E(OPN("29GetHardwareOpusDecoderManagerEPNS0_23HardwareOpusDecoderTypeE")))(da) == gm);
+        CHECK(((int64_t (*)(const void *))E(OPN("35GetHardwareOpusDecoderFrameDurationEPKNS0_23HardwareOpusDecoderTypeE")))(db) == 20000000);
+        CHECK(((f_cnt)E(hw[14]))(da) == 48000 && ((f_cnt)E(hw[15]))(db) == 2);   // 共用的采样率 / 声道数读管理器形态的解码器
+        uint8_t p1[8 + 2] = {0, 0, 0, 2, 0, 0, 0, 0, 0x11, 0}, p2[8 + 2] = {0, 0, 0, 2, 0, 0, 0, 0, 0xEE, 0}, p3[8 + 2] = {0, 0, 0, 2, 0, 0, 0, 0, 0x22, 0};
+        uint64_t used = 99;
+        CHECK(((f_enq)E(hw[6]))(da, &used, p1, sizeof p1) == 0 && used == sizeof p1);
+        CHECK(((f_enq)E(hw[6]))(da, &used, p2, sizeof p2) == 0);
+        CHECK(((f_enq)E(hw[6]))(db, &used, p3, sizeof p3) == 0);
+        CHECK(((f_enq)E(hw[6]))(db, &used, p1, 7) != 0 && used == 0);   // 不到 8 字节头：拒，不占缓冲
+        CHECK(((f_cnt)E(hw[9]))(da) == 2 && ((f_cnt)E(hw[9]))(db) == 1 && ((f_cnt)E(hw[10]))(da) == 0 && ((f_cnt)E(hw[11]))(da) == 0 && ((f_cnt)E(hw[3]))(gm) == 1);
+        CHECK(((f_enq)E(hw[6]))(db, &used, p3, sizeof p3) == 0 && ((f_cnt)E(hw[3]))(gm) == 0);
+        CHECK(((f_enq)E(hw[6]))(db, &used, p3, sizeof p3) != 0);   // 没有空 I/O 缓冲
+        CHECK(!g_trywait(sev));   // Execute 之前不触发
+        int dc0 = g_opus_dec_calls;
+        CHECK(((f_res)E(hw[7]))(gm) == 0);
+        CHECK(g_opus_dec_calls == dc0 + 4 && g_trywait(sev) && !g_trywait(sev));   // 四个包都在 Execute 里解完；事件触发一次、自动清除
+        CHECK(((f_cnt)E(hw[9]))(da) == 0 && ((f_cnt)E(hw[11]))(da) == 2 && ((f_cnt)E(hw[11]))(db) == 2 && ((f_cnt)E(hw[3]))(gm) == 0);
+        static int16_t out[960 * 2]; int smp = 0;
+        CHECK(((f_deq)E(hw[8]))(da, &smp, out, 100) != 0 && smp == 0 && ((f_cnt)E(hw[11]))(da) == 2);   // 缓冲太小：拒，帧留着
+        CHECK(((f_deq)E(hw[8]))(da, &smp, out, sizeof out) == 0 && smp == 960 && out[0] == 0x11 && out[959] == 0x11);
+        memset(out, 0x55, sizeof out);
+        CHECK(((f_deq)E(hw[8]))(da, &smp, out, sizeof out) == 0 && smp == 960 && out[0] == 0 && out[959] == 0 && out[960] == 0x5555);   // 坏包 = 20 ms 静音，只写一帧单声道
+        CHECK(((f_deq)E(hw[8]))(da, &smp, out, sizeof out) != 0);   // 取完了
+        CHECK(((f_deq)E(hw[8]))(db, &smp, out, sizeof out) == 0 && smp == 960 && out[0] == 0x22 && out[960 * 2 - 1] == 0x22);
+        CHECK(((f_cnt)E(hw[3]))(gm) == 3 && ((f_cnt)E(OPN("47GetHardwareOpusDecoderManagerUsingIoBufferCountEPKNS0_30HardwareOpusDecoderManagerTypeE")))(gm) == 1);
+        // Reset（共用名）丢掉管理器形态解码器的请求、缓冲还池
+        int r0 = g_opus_reset;
+        ((f_v)E(hw[13]))(db); CHECK(g_opus_reset == r0 + 1 && ((f_cnt)E(hw[11]))(db) == 0 && ((f_cnt)E(hw[3]))(gm) == 4);
+        // 管理器先结束：解码器之后的 Enqueue / Dequeue 回失败、计数回 0；事件引用放掉；Finalize（共用名）照常放解码器
+        int refs0 = g_ev[g_nev - 1].refs;
+        ((f_v)E(hw[2]))(gm);
+        CHECK(*(void **)gm == NULL && g_ev[g_nev - 1].refs == refs0 - 1);
+        CHECK(((f_enq)E(hw[6]))(da, &used, p1, sizeof p1) != 0 && ((f_deq)E(hw[8]))(da, &smp, out, sizeof out) != 0 && ((f_cnt)E(hw[9]))(da) == 0);
+        int f0 = g_opus_fini;
+        ((f_v)E(hw[12]))(da); ((f_v)E(hw[12]))(db);
+        CHECK(g_opus_fini == f0 + 2 && nvn2_opus_live() == live0);
+        ((f_v)E(hw[2]))(gm);   // 二次结束：第一个字已清，什么都不做
+        #undef OPN
     }
 
     ((f_spv)E(SP_DESTROY))(&spev);
