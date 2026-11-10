@@ -1111,11 +1111,301 @@ static const char *ns2_why(const char *n) {
     if (strstr(n, "NativeMemory") || strstr(n, "VprMemory")) return "原生内存 / 受保护内存（经 gsv）：宿主没有";
     return "要 nn::gs / gsv 已启动（NVN2 驱动）：宿主没有";
 }
+// ---------- nn::codec 硬件 Opus 解码器（hwopus）：宿主用游戏 sdk 自带的软件 OpusDecoder 解 ----------
+// 为什么（11-10 Orbitals 040004F027560000，iPhone 15 Pro Max，开局 16 s 声音初始化）：SDK 21 起硬件 Opus 走 nn::codec::hwacod 垫片——main 导入的
+//   GetHardwareOpusDecoderManagerWorkBufferSize → sdk GetHardwareOpusDecoderManagerWorkBufferSizeImpl（sdk+0x3258f0）→ hwacod::CalcHardwareAudioCodecManagerWorkBufferSize
+//   → shim::WorkBufferSizeCalculator 构造（sdk+0x328e20）先 shim::GetClientHipcSession（sdk+0x3272a0）：向 hwopus 管理器要一个会话对象（hwopus 命令 100，
+//   服务层 Ryujinx 没有这条命令：「未实现服务命令 HardwareOpusDecoderManager command ID: 100」），失败不查、出参留空，随即对空对象调虚函数：
+//   SIGSEGV 地址 0、pc sdk+0x328e74（ldr x8, [x0]，x0 = 0），同一线程 nx-83 上一行就是那条未实现命令。装载期那行「GetNativeSyncHandleFromNvRmFence 红桩」没被调到（调到会中止点名）。
+// 做法：接管层在跨模块导入这一层（main 导入的 nn::codec 硬件 Opus C 接口），整族换成 sdk 导出的软件 OpusDecoder / OpusMultiStreamDecoder（同一份 libopus、原生 ARM），
+//   不进 hwopus / hwacod。两种形态：
+//   - 老的 C 接口（Initialize / Decode…WithHardware / Finalize / Reset / 采样率 / 声道数）：每个游戏解码器对象一份宿主软件状态，游戏的工作缓冲按软件解码器的大小给、原样交给它；
+//   - SDK 21 的异步管理器（Manager + Enqueue / Execute / Dequeue + 各种计数）：管理器的宿主状态指针放在游戏 HardwareOpusDecoderManagerType 第一个字
+//     （游戏凭第一个字认管理器已初始化），Enqueue 排队并占一个 I/O 缓冲，Execute 在调用线程上把等着的包全解完、触发管理器的 SystemEvent，Dequeue 交回一帧并还缓冲；
+//     请求从不处于「执行中」。解码器拒的包照样完成成 20 ms 静音（打红行），游戏的流不脱节。
+//   两种形态的解码器按不同键登记（老的 = 对象地址，管理器的 = 对象地址 + 1）：Finalize / Reset / 采样率 / 声道数两种形态共用一个导入名，查表本身就说明是哪种。
+// 协议事实取自 参考实现 nxnative（MIT）dm/host/hle_codec.c 与 docs/reference/audio.md「SDK 21's hardware Opus decoder manager」「One key for the two forms of the Opus decoder」
+//   （8feddfee；异鸟 2 NS2 版 SDK 21.4.4、Star Fox、Kirby Air Riders SDK 20.5.26 上验过），代码按本仓库口径重写；Orbitals 的导入表（34 个 Opus 名字）逐个核过：
+//   管理器 48 kHz、128 个解码器、255 个 I/O 缓冲（main+0x6a46e48 起的参数），与异鸟 2 的单声道管理器同。
+#define OPUS_SOFT_STATE 0x200        // 软件 OpusDecoderType / OpusMultiStreamDecoderType 的宿主块（大于 sdk 的 0x30 / 0x38）
+#define OPUS_MAX_PACKET 0x1800       // 8 字节头 + 包：20 ms、至多 6 路的一帧远小于它
+#define OPUS_MAX_PCM (960 * 2 * 2 * 3)   // 一帧至多 60 ms、双声道、16 位
+#define OPUS_ERR 0x3a6fu             // 参考实现同值：管理器已结束 / 没有空 I/O 缓冲 / 没有完成的帧
+static void *opus_fn(const char *n) { void *p = guest_sym(n); if (!p) die("硬件 Opus 接管：游戏 SDK 缺软件解码器符号 %s", n); return p; }
+// 游戏对象 → 宿主状态（开放寻址，删除留墓碑）；键：老形态 = 对象地址，管理器形态 = 对象地址 + 1
+enum { OPUS_MAP = 4096 };
+#define OPUS_TOMB ((const void *)1)
+static struct { const void *k; void *v; } g_opus_map[OPUS_MAP];
+static int g_opus_live;
+static pthread_mutex_t g_opus_mu = PTHREAD_MUTEX_INITIALIZER;
+static unsigned opus_h(const void *k) { uint64_t x = (uint64_t)(uintptr_t)k; x ^= x >> 33; x *= 0xff51afd7ed558ccdull; x ^= x >> 33; return (unsigned)x & (OPUS_MAP - 1); }
+static void *opus_map_get(const void *k) {
+    void *v = NULL;
+    pthread_mutex_lock(&g_opus_mu);
+    for (unsigned i = opus_h(k), n = 0; n < OPUS_MAP && g_opus_map[i].k; i = (i + 1) & (OPUS_MAP - 1), n++) if (g_opus_map[i].k == k) { v = g_opus_map[i].v; break; }
+    pthread_mutex_unlock(&g_opus_mu);
+    return v;
+}
+static void opus_map_put(const void *k, void *v) {
+    pthread_mutex_lock(&g_opus_mu);
+    unsigned i = opus_h(k), n = 0; int tomb = -1;
+    for (; n < OPUS_MAP && g_opus_map[i].k; i = (i + 1) & (OPUS_MAP - 1), n++) {
+        if (g_opus_map[i].k == k) { g_opus_map[i].v = v; pthread_mutex_unlock(&g_opus_mu); return; }
+        if (g_opus_map[i].k == OPUS_TOMB && tomb < 0) tomb = (int)i;
+    }
+    if (tomb >= 0) i = (unsigned)tomb; else if (n == OPUS_MAP) die("硬件 Opus 接管：同时在用的解码器超过 %d 个", OPUS_MAP);
+    g_opus_map[i].k = k; g_opus_map[i].v = v; g_opus_live++;
+    pthread_mutex_unlock(&g_opus_mu);
+}
+static void *opus_map_del(const void *k) {
+    void *v = NULL;
+    pthread_mutex_lock(&g_opus_mu);
+    for (unsigned i = opus_h(k), n = 0; n < OPUS_MAP && g_opus_map[i].k; i = (i + 1) & (OPUS_MAP - 1), n++)
+        if (g_opus_map[i].k == k) { v = g_opus_map[i].v; g_opus_map[i].k = OPUS_TOMB; g_opus_map[i].v = NULL; g_opus_live--; break; }
+    pthread_mutex_unlock(&g_opus_mu);
+    return v;
+}
+int nvn2_opus_live(void) { pthread_mutex_lock(&g_opus_mu); int n = g_opus_live; pthread_mutex_unlock(&g_opus_mu); return n; }   // 单测读：登记着的解码器数
+#define OPUS_MGR_KEY(gd) ((const char *)(gd) + 1)
+typedef struct opus_req { struct opus_req *next; size_t n; int samples; uint8_t data[]; } opus_req;   // 等着的包，解完原地换成 PCM
+typedef struct opus_mgr opus_mgr;
+typedef struct { opus_mgr *m; void *gm, *soft, *work; int64_t frame; int ch; opus_req *wait, *wait_tail, *done, *done_tail; int nwait, ndone; } opus_dec;
+struct opus_mgr { pthread_mutex_t lock; uint64_t ev; int io_total, io_used, ndec, cap, max_dec; opus_dec **dec; };
+static void opus_free_list(opus_req *r) { while (r) { opus_req *n = r->next; free(r); r = n; } }
+static void *opus_soft(const void *hw) {
+    opus_dec *d = opus_map_get(OPUS_MGR_KEY(hw)); if (d) return d->soft;
+    void *s = opus_map_get(hw); if (!s) die("硬件 Opus 接管：解码器 %p 不是宿主初始化的", hw);
+    return s;
+}
+static opus_mgr *opus_mgr_of(const void *gm) { opus_mgr *m = *(opus_mgr *const *)gm; if (!m) die("硬件 Opus 接管：管理器 %p 不是宿主初始化的", gm); return m; }
+static opus_dec *opus_dec_of(const void *gd) { opus_dec *d = opus_map_get(OPUS_MGR_KEY(gd)); if (!d) die("硬件 Opus 接管：管理器形态的解码器 %p 不是宿主初始化的", gd); return d; }
+static void opus_dec_clear(opus_dec *d) {   // 持管理器锁：本解码器的请求全丢、I/O 缓冲还池
+    if (d->m) d->m->io_used -= d->nwait + d->ndone;
+    opus_free_list(d->wait); opus_free_list(d->done);
+    d->wait = d->wait_tail = d->done = d->done_tail = NULL; d->nwait = d->ndone = 0;
+}
+// 老的 C 接口
+static uint64_t op_work_size(int rate, int ch, int option) { (void)option; return ((uint64_t (*)(int, int))opus_fn("_ZN2nn5codec28GetOpusDecoderWorkBufferSizeEii"))(rate, ch); }
+static uint64_t op_work_size2(int rate, int ch) { return op_work_size(rate, ch, 0); }
+static Result op_init(void *hw, int rate, int ch, void *buf, uint64_t size, int option) {
+    (void)option;
+    Result (*f)(void *, int, int, void *, uint64_t) = opus_fn("_ZN2nn5codec21InitializeOpusDecoderEPNS0_15OpusDecoderTypeEiiPvm");
+    void *s = opus_map_get(hw); if (!s) { if (!(s = calloc(1, OPUS_SOFT_STATE))) die("硬件 Opus 接管：内存不足"); opus_map_put(hw, s); }
+    return f(s, rate, ch, buf, size);
+}
+static int opus_mgr_dec_fini(void *gd) {
+    opus_dec *d = opus_map_del(OPUS_MGR_KEY(gd)); if (!d) return 0;
+    opus_mgr *m = d->m;
+    if (m) {
+        pthread_mutex_lock(&m->lock); opus_dec_clear(d);
+        for (int i = 0; i < m->ndec; i++) if (m->dec[i] == d) { m->dec[i] = m->dec[--m->ndec]; break; }
+        pthread_mutex_unlock(&m->lock);
+    } else opus_dec_clear(d);
+    ((void (*)(void *))opus_fn("_ZN2nn5codec19FinalizeOpusDecoderEPNS0_15OpusDecoderTypeE"))(d->soft);
+    free(d->soft); free(d->work); free(d);
+    return 1;
+}
+static void op_fini(void *hw) {
+    if (opus_mgr_dec_fini(hw)) return;
+    void *s = opus_map_del(hw); if (!s) return;
+    ((void (*)(void *))opus_fn("_ZN2nn5codec19FinalizeOpusDecoderEPNS0_15OpusDecoderTypeE"))(s); free(s);
+}
+static void op_reset(void *hw) {
+    opus_dec *d = opus_map_get(OPUS_MGR_KEY(hw));
+    void (*reset)(void *) = opus_fn("_ZN2nn5codec16ResetOpusDecoderEPNS0_15OpusDecoderTypeE");
+    if (!d) { reset(opus_soft(hw)); return; }
+    if (d->m) pthread_mutex_lock(&d->m->lock);
+    opus_dec_clear(d); reset(d->soft);
+    if (d->m) pthread_mutex_unlock(&d->m->lock);
+}
+static int op_rate(const void *hw) { return ((int (*)(const void *))opus_fn("_ZN2nn5codec24GetOpusDecoderSampleRateEPKNS0_15OpusDecoderTypeE"))(opus_soft(hw)); }
+static int op_channels(const void *hw) { return ((int (*)(const void *))opus_fn("_ZN2nn5codec26GetOpusDecoderChannelCountEPKNS0_15OpusDecoderTypeE"))(opus_soft(hw)); }
+static Result op_decode(void *hw, uint64_t *consumed, int *samples, int16_t *out, uint64_t out_size, const void *in, uint64_t in_size) {
+    Result (*f)(void *, uint64_t *, int *, int16_t *, uint64_t, const void *, uint64_t) = opus_fn("_ZN2nn5codec21DecodeOpusInterleavedEPNS0_15OpusDecoderTypeEPmPiPsmPKvm");
+    return f(opus_soft(hw), consumed, samples, out, out_size, in, in_size);
+}
+// 多流（老的 C 接口）
+static uint64_t opm_work_size(int rate, int ch, int streams, int stereo) {
+    return ((uint64_t (*)(int, int, int, int))opus_fn("_ZN2nn5codec39GetOpusMultiStreamDecoderWorkBufferSizeEiiii"))(rate, ch, streams, stereo);
+}
+static uint64_t opm_work_size5(int rate, int ch, int streams, int stereo, int option) { (void)option; return opm_work_size(rate, ch, streams, stereo); }
+static Result opm_init(void *hw, int rate, int ch, int streams, int stereo, const uint8_t *map, void *buf, uint64_t size /* 第 9 个参数 option 在栈上，不读 */) {
+    Result (*f)(void *, int, int, int, int, const uint8_t *, void *, uint64_t) = opus_fn("_ZN2nn5codec32InitializeOpusMultiStreamDecoderEPNS0_26OpusMultiStreamDecoderTypeEiiiiPKhPvm");
+    void *s = opus_map_get(hw); if (!s) { if (!(s = calloc(1, OPUS_SOFT_STATE))) die("硬件 Opus 接管：内存不足"); opus_map_put(hw, s); }
+    return f(s, rate, ch, streams, stereo, map, buf, size);
+}
+static void opm_fini(void *hw) { void *s = opus_map_del(hw); if (!s) return; ((void (*)(void *))opus_fn("_ZN2nn5codec30FinalizeOpusMultiStreamDecoderEPNS0_26OpusMultiStreamDecoderTypeE"))(s); free(s); }
+static int opm_rate(const void *hw) { return ((int (*)(const void *))opus_fn("_ZN2nn5codec35GetOpusMultiStreamDecoderSampleRateEPKNS0_26OpusMultiStreamDecoderTypeE"))(opus_soft(hw)); }
+static int opm_channels(const void *hw) { return ((int (*)(const void *))opus_fn("_ZN2nn5codec37GetOpusMultiStreamDecoderChannelCountEPKNS0_26OpusMultiStreamDecoderTypeE"))(opus_soft(hw)); }
+static int opm_total(const void *hw) { return ((int (*)(const void *))opus_fn("_ZN2nn5codec41GetOpusMultiStreamDecoderTotalStreamCountEPKNS0_26OpusMultiStreamDecoderTypeE"))(opus_soft(hw)); }
+static int opm_stereo(const void *hw) { return ((int (*)(const void *))opus_fn("_ZN2nn5codec42GetOpusMultiStreamDecoderStereoStreamCountEPKNS0_26OpusMultiStreamDecoderTypeE"))(opus_soft(hw)); }
+static void opm_reset(void *hw) { ((void (*)(void *))opus_fn("_ZN2nn5codec27ResetOpusMultiStreamDecoderEPNS0_26OpusMultiStreamDecoderTypeE"))(opus_soft(hw)); }
+static Result opm_decode(void *hw, uint64_t *consumed, int *samples, int16_t *out, uint64_t out_size, const void *in, uint64_t in_size) {
+    Result (*f)(void *, uint64_t *, int *, int16_t *, uint64_t, const void *, uint64_t) = opus_fn("_ZN2nn5codec32DecodeOpusMultiStreamInterleavedEPNS0_26OpusMultiStreamDecoderTypeEPmPiPsmPKvm");
+    return f(opus_soft(hw), consumed, samples, out, out_size, in, in_size);
+}
+static int64_t opm_time(const void *hw) { (void)hw; return 0; }   // 硬件解一帧的用时：软件解码在调用线程上同步跑，不报
+// SDK 21 的管理器
+static uint64_t mgr_work_size(int rate, int ch, int64_t frame, int decoders, int io) { (void)rate; (void)ch; (void)frame; (void)decoders; (void)io; return 0x1000; }   // 状态在宿主，工作缓冲不用
+static Result mgr_init(void *gm, void *event, int rate, int ch, int64_t frame, int decoders, int io, void *buf /* 第 9 个参数 size 在栈上，不读 */) {
+    (void)rate; (void)ch; (void)frame; (void)buf;
+    opus_mgr *m = calloc(1, sizeof *m); if (!m) die("硬件 Opus 接管：内存不足");
+    pthread_mutex_init(&m->lock, NULL); m->io_total = io; m->max_dec = decoders; m->cap = decoders > 0 ? decoders : 1;
+    if (!(m->dec = calloc((size_t)m->cap, sizeof *m->dec))) die("硬件 Opus 接管：内存不足");
+    m->ev = sev_attach(event, 1);   // 真机由 SDK 建这个事件；游戏在 FinalizeHardwareOpusDecoderManager 之后自己销毁（托管句柄随之关）
+    *(opus_mgr **)gm = m;
+    LOG("硬件 Opus 接管：管理器 %p（%d Hz、%d 声道、%d 个解码器、%d 个 I/O 缓冲），软件 OpusDecoder 在 Execute 时解", gm, rate, ch, decoders, io);
+    return RES_OK;
+}
+static void mgr_fini(void *gm) {
+    opus_mgr *m = *(opus_mgr **)gm; if (!m) return;
+    pthread_mutex_lock(&m->lock);
+    for (int i = 0; i < m->ndec; i++) if (m->dec[i]) m->dec[i]->m = NULL;   // 解码器还在：之后 Enqueue / Dequeue 回失败，Finalize 照常放
+    pthread_mutex_unlock(&m->lock);
+    *(opus_mgr **)gm = NULL;
+    s2a_event_release(m->ev);
+    pthread_mutex_destroy(&m->lock); free(m->dec); free(m);
+}
+static int mgr_io(const void *gm, int which) {   // 0 空、1 总数、2 在用
+    opus_mgr *m = opus_mgr_of(gm); pthread_mutex_lock(&m->lock); int n = which == 1 ? m->io_total : which == 2 ? m->io_used : m->io_total - m->io_used; pthread_mutex_unlock(&m->lock); return n; }
+static int mgr_free_io(const void *gm) { return mgr_io(gm, 0); }
+static int mgr_total_io(const void *gm) { return mgr_io(gm, 1); }
+static int mgr_using_io(const void *gm) { return mgr_io(gm, 2); }
+// 还能不能再建一个解码器（sdk 回 bool，sdk+0x3259cc and w0, w0, #1）：按游戏初始化时要的解码器数
+static int mgr_validate(const void *gm, int rate, int ch, int64_t frame) {
+    (void)rate; (void)ch; (void)frame; opus_mgr *m = opus_mgr_of(gm); pthread_mutex_lock(&m->lock); int ok = m->ndec < m->max_dec; pthread_mutex_unlock(&m->lock); return ok; }
+static Result mgr_dec_init(void *gd, int rate, int ch, int64_t frame, void *gm) {
+    opus_mgr *m = opus_mgr_of(gm);
+    uint64_t (*wsize)(int, int) = opus_fn("_ZN2nn5codec28GetOpusDecoderWorkBufferSizeEii");
+    Result (*init)(void *, int, int, void *, uint64_t) = opus_fn("_ZN2nn5codec21InitializeOpusDecoderEPNS0_15OpusDecoderTypeEiiPvm");
+    opus_dec *d = calloc(1, sizeof *d); if (!d) die("硬件 Opus 接管：内存不足");
+    uint64_t ws = wsize(rate, ch);
+    if (!(d->soft = calloc(1, OPUS_SOFT_STATE)) || !(d->work = calloc(1, (size_t)ws))) die("硬件 Opus 接管：内存不足");
+    Result r = init(d->soft, rate, ch, d->work, ws);
+    if (r) { free(d->work); free(d->soft); free(d); return r; }
+    d->m = m; d->gm = gm; d->frame = frame; d->ch = ch;
+    pthread_mutex_lock(&m->lock);
+    if (m->ndec == m->cap) { opus_dec **n = realloc(m->dec, (size_t)m->cap * 2 * sizeof *n); if (!n) die("硬件 Opus 接管：内存不足"); m->dec = n; m->cap *= 2; }
+    m->dec[m->ndec++] = d;
+    pthread_mutex_unlock(&m->lock);
+    opus_map_put(OPUS_MGR_KEY(gd), d);
+    return RES_OK;
+}
+static Result mgr_enqueue(void *gd, uint64_t *consumed, const void *in, uint64_t in_size) {
+    opus_dec *d = opus_dec_of(gd); opus_mgr *m = d->m;
+    if (consumed) *consumed = 0;
+    if (!m) return OPUS_ERR;
+    if (in_size < 8 || in_size > OPUS_MAX_PACKET) { CV_RED(opus_pkt, "硬件 Opus 接管：排进 %llu 字节的包（8 字节头 + 包，上限 %d）", (unsigned long long)in_size, OPUS_MAX_PACKET); return OPUS_ERR; }
+    opus_req *r = malloc(sizeof *r + (in_size > OPUS_MAX_PCM ? (size_t)in_size : OPUS_MAX_PCM)); if (!r) die("硬件 Opus 接管：内存不足");
+    r->next = NULL; r->n = (size_t)in_size; r->samples = 0; memcpy(r->data, in, (size_t)in_size);
+    pthread_mutex_lock(&m->lock);
+    if (m->io_used >= m->io_total) { pthread_mutex_unlock(&m->lock); free(r); return OPUS_ERR; }   // 没有空 I/O 缓冲：游戏先看空缓冲数
+    m->io_used++; d->nwait++;
+    if (d->wait_tail) d->wait_tail->next = r; else d->wait = r;
+    d->wait_tail = r;
+    pthread_mutex_unlock(&m->lock);
+    if (consumed) *consumed = in_size;
+    return RES_OK;
+}
+static Result mgr_execute(void *gm) {
+    opus_mgr *m = opus_mgr_of(gm);
+    Result (*dec)(void *, uint64_t *, int *, int16_t *, uint64_t, const void *, uint64_t) = opus_fn("_ZN2nn5codec21DecodeOpusInterleavedEPNS0_15OpusDecoderTypeEPmPiPsmPKvm");
+    int any = 0;
+    pthread_mutex_lock(&m->lock);
+    for (int i = 0; i < m->ndec; i++) {
+        opus_dec *d = m->dec[i];
+        while (d->wait) {
+            opus_req *r = d->wait; d->wait = r->next; if (!d->wait) d->wait_tail = NULL; d->nwait--;
+            uint8_t pkt[OPUS_MAX_PACKET]; size_t n = r->n; uint64_t used = 0; int samples = 0; memcpy(pkt, r->data, n);
+            Result res = dec(d->soft, &used, &samples, (int16_t *)(void *)r->data, OPUS_MAX_PCM, pkt, n);
+            if (res || samples <= 0) {   // 解码器拒的包也完成成 20 ms 静音，游戏的流不脱节
+                CV_RED(opus_dec, "硬件 Opus 接管：软件 OpusDecoder 解 %zu 字节的包失败（%#x），出静音", n, res);
+                samples = 960; memset(r->data, 0, (size_t)samples * (size_t)d->ch * 2);
+            }
+            r->samples = samples; r->n = (size_t)samples * (size_t)d->ch * 2; r->next = NULL;
+            if (d->done_tail) d->done_tail->next = r; else d->done = r;
+            d->done_tail = r; d->ndone++; any = 1;
+        }
+    }
+    pthread_mutex_unlock(&m->lock);
+    if (any) s2a_event_signal(m->ev);
+    return RES_OK;
+}
+static Result mgr_dequeue(void *gd, int *samples, int16_t *out, uint64_t out_size) {
+    opus_dec *d = opus_dec_of(gd); opus_mgr *m = d->m;
+    if (samples) *samples = 0;
+    if (!m) return OPUS_ERR;
+    pthread_mutex_lock(&m->lock);
+    opus_req *r = d->done;
+    if (!r) { pthread_mutex_unlock(&m->lock); return OPUS_ERR; }   // 没有完成的帧：游戏只按完成数取
+    if (r->n > out_size) { pthread_mutex_unlock(&m->lock); CV_RED(opus_out, "硬件 Opus 接管：%zu 字节的一帧、游戏只给 %llu 字节", r->n, (unsigned long long)out_size); return OPUS_ERR; }
+    d->done = r->next; if (!d->done) d->done_tail = NULL; d->ndone--; m->io_used--;
+    pthread_mutex_unlock(&m->lock);
+    memcpy(out, r->data, r->n); if (samples) *samples = r->samples;
+    free(r);
+    return RES_OK;
+}
+static int mgr_count(const void *gd, int which) {   // 0 等着、1 执行中（恒 0）、2 完成未取
+    opus_dec *d = opus_dec_of(gd); opus_mgr *m = d->m; if (!m) return 0;
+    pthread_mutex_lock(&m->lock); int n = which == 0 ? d->nwait : which == 2 ? d->ndone : 0; pthread_mutex_unlock(&m->lock);
+    return n;
+}
+static void *mgr_of_dec(void *gd) { opus_dec *d = opus_dec_of(gd); return d->m ? d->gm : NULL; }
+static int64_t mgr_frame(const void *gd) { opus_dec *d = opus_map_get(OPUS_MGR_KEY(gd)); return d ? d->frame : 0; }   // 老形态没有帧长，回 0
+static int64_t op_time(const void *hw) { (void)hw; return 0; }   // 同 opm_time：两种形态都不报硬件用时（sdk 读 +0x20，宿主没写）
+static int mgr_waiting(const void *gd) { return mgr_count(gd, 0); }
+static int mgr_executing(const void *gd) { return mgr_count(gd, 1); }
+static int mgr_completed(const void *gd) { return mgr_count(gd, 2); }
+static const struct { const char *n; void *f; } g_opus_names[] = {
+    { "_ZN2nn5codec36GetHardwareOpusDecoderWorkBufferSizeEiii", (void *)op_work_size },
+    { "_ZN2nn5codec36GetHardwareOpusDecoderWorkBufferSizeEii", (void *)op_work_size2 },
+    { "_ZN2nn5codec29InitializeHardwareOpusDecoderEPNS0_23HardwareOpusDecoderTypeEiiPvmi", (void *)op_init },
+    { "_ZN2nn5codec27FinalizeHardwareOpusDecoderEPNS0_23HardwareOpusDecoderTypeE", (void *)op_fini },
+    { "_ZN2nn5codec24ResetHardwareOpusDecoderEPNS0_23HardwareOpusDecoderTypeE", (void *)op_reset },
+    { "_ZN2nn5codec32GetHardwareOpusDecoderSampleRateEPKNS0_23HardwareOpusDecoderTypeE", (void *)op_rate },
+    { "_ZN2nn5codec34GetHardwareOpusDecoderChannelCountEPKNS0_23HardwareOpusDecoderTypeE", (void *)op_channels },
+    { "_ZN2nn5codec33DecodeOpusInterleavedWithHardwareEPNS0_23HardwareOpusDecoderTypeEPmPiPsmPKvm", (void *)op_decode },
+    { "_ZN2nn5codec47GetHardwareOpusMultiStreamDecoderWorkBufferSizeEiiii", (void *)opm_work_size },
+    { "_ZN2nn5codec47GetHardwareOpusMultiStreamDecoderWorkBufferSizeEiiiii", (void *)opm_work_size5 },
+    { "_ZN2nn5codec40InitializeHardwareOpusMultiStreamDecoderEPNS0_34HardwareOpusMultiStreamDecoderTypeEiiiiPKhPvmi", (void *)opm_init },
+    { "_ZN2nn5codec38FinalizeHardwareOpusMultiStreamDecoderEPNS0_34HardwareOpusMultiStreamDecoderTypeE", (void *)opm_fini },
+    { "_ZN2nn5codec43GetHardwareOpusMultiStreamDecoderSampleRateEPKNS0_34HardwareOpusMultiStreamDecoderTypeE", (void *)opm_rate },
+    { "_ZN2nn5codec45GetHardwareOpusMultiStreamDecoderChannelCountEPKNS0_34HardwareOpusMultiStreamDecoderTypeE", (void *)opm_channels },
+    { "_ZN2nn5codec49GetHardwareOpusMultiStreamDecoderTotalStreamCountEPKNS0_34HardwareOpusMultiStreamDecoderTypeE", (void *)opm_total },
+    { "_ZN2nn5codec50GetHardwareOpusMultiStreamDecoderStereoStreamCountEPKNS0_34HardwareOpusMultiStreamDecoderTypeE", (void *)opm_stereo },
+    { "_ZN2nn5codec35ResetHardwareOpusMultiStreamDecoderEPNS0_34HardwareOpusMultiStreamDecoderTypeE", (void *)opm_reset },
+    { "_ZN2nn5codec44DecodeOpusMultiStreamInterleavedWithHardwareEPNS0_34HardwareOpusMultiStreamDecoderTypeEPmPiPsmPKvm", (void *)opm_decode },
+    { "_ZN2nn5codec47GetHardwareOpusMultiStreamDecoderProcessingTimeEPKNS0_34HardwareOpusMultiStreamDecoderTypeE", (void *)opm_time },
+    { "_ZN2nn5codec43GetHardwareOpusDecoderManagerWorkBufferSizeEiiNS_8TimeSpanEii", (void *)mgr_work_size },
+    { "_ZN2nn5codec36InitializeHardwareOpusDecoderManagerEPNS0_30HardwareOpusDecoderManagerTypeEPNS_2os15SystemEventTypeEiiNS_8TimeSpanEiiPvm", (void *)mgr_init },
+    { "_ZN2nn5codec34FinalizeHardwareOpusDecoderManagerEPNS0_30HardwareOpusDecoderManagerTypeE", (void *)mgr_fini },
+    { "_ZN2nn5codec46GetHardwareOpusDecoderManagerFreeIoBufferCountEPKNS0_30HardwareOpusDecoderManagerTypeE", (void *)mgr_free_io },
+    { "_ZN2nn5codec47GetHardwareOpusDecoderManagerTotalIoBufferCountEPKNS0_30HardwareOpusDecoderManagerTypeE", (void *)mgr_total_io },
+    { "_ZN2nn5codec47GetHardwareOpusDecoderManagerUsingIoBufferCountEPKNS0_30HardwareOpusDecoderManagerTypeE", (void *)mgr_using_io },
+    { "_ZN2nn5codec49ValidateHardwareOpusDecoderManagerDecoderResourceEPKNS0_30HardwareOpusDecoderManagerTypeEiiNS_8TimeSpanE", (void *)mgr_validate },
+    { "_ZN2nn5codec29GetHardwareOpusDecoderManagerEPNS0_23HardwareOpusDecoderTypeE", (void *)mgr_of_dec },
+    { "_ZN2nn5codec35GetHardwareOpusDecoderFrameDurationEPKNS0_23HardwareOpusDecoderTypeE", (void *)mgr_frame },
+    { "_ZN2nn5codec36GetHardwareOpusDecoderProcessingTimeEPKNS0_23HardwareOpusDecoderTypeE", (void *)op_time },
+    { "_ZN2nn5codec29InitializeHardwareOpusDecoderEPNS0_23HardwareOpusDecoderTypeEiiNS_8TimeSpanEPNS0_30HardwareOpusDecoderManagerTypeE", (void *)mgr_dec_init },
+    { "_ZN2nn5codec36EnqueueOpusDataToHardwareOpusDecoderEPNS0_23HardwareOpusDecoderTypeEPmPKvm", (void *)mgr_enqueue },
+    { "_ZN2nn5codec34ExecuteHardwareOpusDecoderDecodingEPNS0_30HardwareOpusDecoderManagerTypeE", (void *)mgr_execute },
+    { "_ZN2nn5codec48DequeuePcmInterleavedDataFromHardwareOpusDecoderEPNS0_23HardwareOpusDecoderTypeEPiPsm", (void *)mgr_dequeue },
+    { "_ZN2nn5codec47GetHardwareOpusDecoderWaitingDecodeRequestCountEPKNS0_23HardwareOpusDecoderTypeE", (void *)mgr_waiting },
+    { "_ZN2nn5codec49GetHardwareOpusDecoderExecutingDecodeRequestCountEPKNS0_23HardwareOpusDecoderTypeE", (void *)mgr_executing },
+    { "_ZN2nn5codec49GetHardwareOpusDecoderCompletedDecodeRequestCountEPKNS0_23HardwareOpusDecoderTypeE", (void *)mgr_completed },
+};
+
 // 装载器按名字问（runtime/src/gfxmode.c）：nn::codec 的视频部分、nn::syncpt、nn::gs、NVN2 原生图像（C 与 C++ 包装）；只在 Switch 2 进程上接。
 //   规格源 = 4 款 sdk 的导出表（金刚 20.5 / raiders 21.4 / 火纹 22 / Pokopia）：这几族是句柄族（宿主发的解码器 / 图像 / 同步句柄，sdk 认不得）或依赖 gs / gsv 启动，
 //   有实现的回实现；宿主做不到且有实证原路径必中止的回红桩（装载打红行，调用即中止点名）；其余回 NULL 照原路径
 void *s2a_codec_entry(const char *name) {
     if (!name || !nvn2_on()) return NULL;
+    // 硬件 Opus（hwopus / hwacod）：老 C 接口与 SDK 21 管理器整族换软件解码器（见上）；多流管理器形态还没接（没见过导入它的款），照原路径进 sdk、打红行
+    for (unsigned i = 0; i < sizeof g_opus_names / sizeof *g_opus_names; i++) if (!strcmp(name, g_opus_names[i].n)) return g_opus_names[i].f;
+    if (!strncmp(name, "_ZN2nn5codec", 12) && strstr(name, "HardwareOpusMultiStream") && (strstr(name, "Manager") || strstr(name, "Enqueue") || strstr(name, "Dequeue") || strstr(name, "NS_8TimeSpan"))) {
+        LOG("【红】直连：Switch 2 游戏导入 %s，宿主没接管：照原路径进 sdk（多流硬件 Opus 管理器形态，sdk 经 hwacod 要 hwopus 命令 100，服务层没有，会对空会话调虚函数）", name);
+        return NULL;
+    }
     for (unsigned i = 0; i < sizeof g_cv_names / sizeof *g_cv_names; i++)
         if (!strcmp(name, g_cv_names[i].n)) return g_cv_names[i].f ? g_cv_names[i].f : (void *)cv_lib_ok;
     for (unsigned i = 0; i < sizeof g_ni_names / sizeof *g_ni_names; i++) if (!strcmp(name, g_ni_names[i].n)) return g_ni_names[i].f;
