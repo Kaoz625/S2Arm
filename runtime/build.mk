@@ -194,6 +194,7 @@ ios: ios-ns2pro
 	@/usr/bin/plutil -insert GCSupportsGameMode -bool YES $(IOS_APP)/Info.plist   # 部署目标 iOS 18.0 < 18.6：LSSupportsGameMode 18.6 起才认，18.0–18.5 靠旧键
 	@/usr/bin/plutil -insert NSLocalNetworkUsageDescription -string "本地联机：与同一 Wi-Fi 下的其他设备互相发现、进同一个房间。" $(IOS_APP)/Info.plist; /usr/bin/plutil -insert NSBonjourServices -json '["_s2arm-ldn._tcp"]' $(IOS_APP)/Info.plist   # ldn_lan.m
 	@/usr/bin/plutil -insert NSBluetoothAlwaysUsageDescription -string "Connect a Switch 2 Pro Controller when enabled in Settings." $(IOS_APP)/Info.plist
+	@/usr/bin/plutil -insert CFBundleURLTypes -json '[{"CFBundleURLName":"dev.s2arm.ota","CFBundleURLSchemes":["s2arm"]}]' $(IOS_APP)/Info.plist   # s2arm://download?catalog=…：OTA 资源包下载（ios/ota_download.m、docs/OTA_DOWNLOAD.md）
 	@/usr/bin/plutil -insert UIApplicationSceneManifest -json '{"UIApplicationSupportsMultipleScenes":false,"UISceneConfigurations":{"UIWindowSceneSessionRoleApplication":[{"UISceneConfigurationName":"Default","UISceneDelegateClassName":"S2ASceneDelegate"}]}}' $(IOS_APP)/Info.plist   # iOS 27 场景生命周期（27.1 SDK 强制 UIScene adoption，否则启动即崩）：指向 app.m 的 S2ASceneDelegate
 	@echo "iOS App：$(IOS_APP)（$$(du -sh $(IOS_APP) | cut -f1)，包名 $(IOS_BUNDLE)，未签名）"
 
