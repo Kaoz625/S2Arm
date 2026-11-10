@@ -12,6 +12,7 @@
 #import <Metal/Metal.h>
 #import "vpad.h"
 #import "app_settings.h"
+#import "s2a_l10n.h"
 #include <sys/sysctl.h>
 #include "native.h"
 #include "diagredact.h"
@@ -183,13 +184,13 @@ static NSURL *build_zip(NSUInteger cap, BOOL slim, NSString **err) {
     }
     if (copyFailed) {
         [fm removeItemAtPath:W error:nil];
-        if (err) *err = @"诊断脱敏或写入失败，未导出诊断包";
+        if (err) *err = S2AL(@"diag.error.redactWrite");
         return nil;
     }
     NSString *bundle = redact(NSBundle.mainBundle.bundleIdentifier ?: @"");
     if (!bundle) {
         [fm removeItemAtPath:W error:nil];
-        if (err) *err = @"诊断包名脱敏失败，未导出诊断包";
+        if (err) *err = S2AL(@"diag.error.redactName");
         return nil;
     }
     NSISO8601DateFormatter *iso = [NSISO8601DateFormatter new]; iso.timeZone = NSTimeZone.localTimeZone;
@@ -212,7 +213,7 @@ static NSURL *build_zip(NSUInteger cap, BOOL slim, NSString **err) {
     NSString *destPath = [[outDir stringByAppendingPathComponent:name] stringByAppendingPathExtension:@"zip"];
     NSURL *zip = write_zip(W, destPath) ? [NSURL fileURLWithPath:destPath] : nil;
     [fm removeItemAtPath:W error:nil];
-    if (!zip && err) *err = @"打包失败（写 zip 出错，可能是手机空间不够）";
+    if (!zip && err) *err = S2AL(@"diag.error.zip");
     // Documents/diag 只留最近 3 个
     NSArray *old = [[[fm contentsOfDirectoryAtPath:outDir error:nil] filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"SELF ENDSWITH '.zip'"]] sortedArrayUsingSelector:@selector(compare:)];
     for (NSUInteger i = 0; old.count > 3 && i < old.count - 3; i++) [fm removeItemAtPath:[outDir stringByAppendingPathComponent:old[i]] error:nil];
@@ -241,8 +242,8 @@ void s2a_diag_export(void) {
             UIViewController *presenter = g_vc;
             while (presenter.presentedViewController) presenter = presenter.presentedViewController;
             if ([presenter isKindOfClass:UINavigationController.class]) presenter = ((UINavigationController *)presenter).topViewController;
-            if (!zip) { UIAlertController *a = [UIAlertController alertControllerWithTitle:@"诊断包没生成" message:err preferredStyle:UIAlertControllerStyleAlert];
-                [a addAction:[UIAlertAction actionWithTitle:@"知道了" style:UIAlertActionStyleCancel handler:nil]]; [presenter presentViewController:a animated:YES completion:nil]; return; }
+            if (!zip) { UIAlertController *a = [UIAlertController alertControllerWithTitle:S2AL(@"diag.error.title") message:err preferredStyle:UIAlertControllerStyleAlert];
+                [a addAction:[UIAlertAction actionWithTitle:S2AL(@"common.gotIt") style:UIAlertActionStyleCancel handler:nil]]; [presenter presentViewController:a animated:YES completion:nil]; return; }
             UIActivityViewController *av = [[UIActivityViewController alloc] initWithActivityItems:@[zip] applicationActivities:nil];
             av.popoverPresentationController.sourceView = g_vc.view;   // iPad 要锚点
             av.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(g_vc.view.bounds), CGRectGetMidY(g_vc.view.bounds), 1, 1);
@@ -286,7 +287,7 @@ static NSString *mk_dir(void) {
     }
     mk_trim(dir, NO);
     LOG("诊断包：MetricKit 交来 %lu 份诊断（新的崩溃 / 卡顿 %d）", (unsigned long)payloads.count, bad);
-    if (bad) dispatch_async(dispatch_get_main_queue(), ^{ void s2a_diag_prompt(NSString *why); s2a_diag_prompt(@"系统报告上次 S2Arm 崩溃或卡住了"); });
+    if (bad) dispatch_async(dispatch_get_main_queue(), ^{ void s2a_diag_prompt(NSString *why); s2a_diag_prompt(S2AL(@"diag.why.crashReport")); });
 }
 // 退出原因计数（系统约每天交一次：前台 / 后台各类退出的累计次数）：被看门狗杀、超内存上限被杀不产生崩溃诊断，只在这里看得见——0 崩率要它
 - (void)didReceiveMetricPayloads:(NSArray<MXMetricPayload *> *)payloads {
@@ -317,10 +318,10 @@ void s2a_diag_prompt(NSString *why) {
     // 自动化 / 开发工具起的局（s2a_unattended.h）不问：日志由工具拉回，弹窗只会挡住整局
     if (s2a_unattended()) { LOG("诊断：%s；自动化局不问「把上次的诊断发给我们？」", why.UTF8String); return; }
     if (g_exporting || [g_vc.presentedViewController isKindOfClass:UIActivityViewController.class]) return;
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"把上次的诊断发给我们？"
-        message:[why stringByAppendingString:@"。诊断包里只有运行日志，不含存档、密钥和游戏文件。"] preferredStyle:UIAlertControllerStyleAlert];
-    [a addAction:[UIAlertAction actionWithTitle:@"不用了" style:UIAlertActionStyleCancel handler:nil]];
-    [a addAction:[UIAlertAction actionWithTitle:@"发送诊断" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) { (void)x; s2a_diag_export(); }]];
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:S2AL(@"diag.prompt.title")
+        message:[NSString stringWithFormat:S2AL(@"diag.prompt.message"), why] preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:S2AL(@"diag.prompt.decline") style:UIAlertActionStyleCancel handler:nil]];
+    [a addAction:[UIAlertAction actionWithTitle:S2AL(@"diag.prompt.send") style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) { (void)x; s2a_diag_export(); }]];
     UIViewController *top = g_vc; while (top.presentedViewController) top = top.presentedViewController;
     g_promptAlert = a; [top presentViewController:a animated:YES completion:nil];
 }
@@ -342,7 +343,7 @@ void s2a_diag_boot(void) {
       if (pd.count) [g_mk didReceiveDiagnosticPayloads:pd]; if (pm.count) [g_mk didReceiveMetricPayloads:pm]; }
     // 设置页显示包号（Settings.bundle 的只读项读 UserDefaults 的 S2ABuildID；值来自 Info.plist，ipa.sh 写）
     NSString *bid = [NSBundle.mainBundle objectForInfoDictionaryKey:@"S2ABuildID"];
-    [NSUserDefaults.standardUserDefaults setObject:bid.length ? bid : @"未知" forKey:@"S2ABuildID"];
+    [NSUserDefaults.standardUserDefaults setObject:bid.length ? bid : S2AL(@"about.unknown") forKey:@"S2ABuildID"];
     [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillEnterForegroundNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) { (void)n;
         [NSUserDefaults.standardUserDefaults synchronize]; check_toggle(); }];
 }
@@ -388,7 +389,7 @@ void s2a_diag_attach(UIViewController *vc) {
       LOG("诊断包：上次会话标记 %s（主线程 %.2f ms，不读日志）→ %s", prev == S2A_SESMARK_FG ? "前台未收尾" : prev == S2A_SESMARK_BG ? "后台" : "无（正常收尾）", (clock_gettime_nsec_np(CLOCK_UPTIME_RAW) - t0) / 1e6, prev == S2A_SESMARK_FG ? "提示导出" : "不提示");
       dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         check_toggle();
-        if (prev == S2A_SESMARK_FG) s2a_diag_prompt(@"上次 S2Arm 没有正常退出（崩溃、卡住或被系统关掉）");
+        if (prev == S2A_SESMARK_FG) s2a_diag_prompt(S2AL(@"diag.why.uncleanExit"));
       }); }
 }
 // 进后台 / 回前台（app.m 生命周期通知，主线程）：改写会话标记，在后台被划掉 / 被系统回收不算异常

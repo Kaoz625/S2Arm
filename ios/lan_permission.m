@@ -10,6 +10,7 @@
 #include "native.h"
 #include "s2a_unattended.h"
 #include "root_ready.h"
+#import "s2a_l10n.h"
 
 static BOOL lan_unattended(void) { return s2a_unattended(); }
 
@@ -26,7 +27,7 @@ static UIViewController *lan_top_vc(void) {
 
 static NSString *lan_app_name(void) {
     NSString *n = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleDisplayName"];
-    return n.length ? n : ([NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleName"] ?: @"本 App");
+    return n.length ? n : ([NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleName"] ?: S2AL(@"lan.appNameFallback"));
 }
 
 // 主线程调用。dev_mode = 起局前就设了 S2A_LDN_SERVER=lan（ldn_lan.m 在 setenv 之前读好传进来）
@@ -44,10 +45,10 @@ void s2a_lan_permission_then(int dev_mode, void (^go)(void)) {
             usingBlock:^(NSNotification *n) { (void)n; [NSNotificationCenter.defaultCenter removeObserver:token]; token = nil; retry(); }];
         return;
     }
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"本地联机要用「本地网络」"
-        message:@"和同一 Wi-Fi 下的朋友联机时，需要在本地网络里找到对方的设备、进同一个房间。\n\n接下来系统会问「是否允许查找本地网络中的设备」，请点「允许」。\n\n不联机的话可以点「不允许」，单人游戏不受影响；以后想联机，可以在「设置」里再打开。"
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:S2AL(@"lan.permission.title")
+        message:S2AL(@"lan.permission.message")
         preferredStyle:UIAlertControllerStyleAlert];
-    [a addAction:[UIAlertAction actionWithTitle:@"知道了" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) {
+    [a addAction:[UIAlertAction actionWithTitle:S2AL(@"common.gotIt") style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) {
         (void)x; [ud setBool:YES forKey:@"S2ALanPermExplained"]; LOG("[S2A 联机] 本地网络说明：玩家已读，开始找设备"); go(); }]];
     LOG("[S2A 联机] 本地网络说明：首次联机，先说明用途再请求授权");
     [top presentViewController:a animated:YES completion:nil];
@@ -60,10 +61,10 @@ void s2a_lan_permission_failed(const char *what, NSDictionary *err) {
     if (shown || lan_unattended()) return;
     UIViewController *top = lan_top_vc(); if (!top) return;
     shown = YES;
-    NSString *msg = [NSString stringWithFormat:@"系统没有允许「%@」查找本地网络中的设备，联机找不到其他玩家。\n\n请到「设置 › 隐私与安全性 › 本地网络」，打开「%@」，再回来重新进联机。", lan_app_name(), lan_app_name()];
-    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"本地联机被拦住了" message:msg preferredStyle:UIAlertControllerStyleAlert];
-    [a addAction:[UIAlertAction actionWithTitle:@"以后再说" style:UIAlertActionStyleCancel handler:nil]];
-    [a addAction:[UIAlertAction actionWithTitle:@"去设置" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) {
+    NSString *msg = [NSString stringWithFormat:S2AL(@"lan.denied.message"), lan_app_name(), lan_app_name()];
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:S2AL(@"lan.denied.title") message:msg preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:S2AL(@"lan.denied.later") style:UIAlertActionStyleCancel handler:nil]];
+    [a addAction:[UIAlertAction actionWithTitle:S2AL(@"lan.denied.openSettings") style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) {
         (void)x; [UIApplication.sharedApplication openURL:[NSURL URLWithString:UIApplicationOpenSettingsURLString] options:@{} completionHandler:nil]; }]];
     [top presentViewController:a animated:YES completion:nil];
 }

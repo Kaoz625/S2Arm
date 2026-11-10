@@ -2,6 +2,7 @@
 #import <GameController/GameController.h>
 #import <CoreHaptics/CoreHaptics.h>
 #import "controller.h"
+#import "s2a_l10n.h"
 #import <UIKit/UIGestureRecognizerSubclass.h>   // S2ATouchWatch 要改 state
 #include "native.h"
 #include "s2a_pad.h"
@@ -339,10 +340,10 @@ static void ble_status(ns2_status status, const char *message, void *context) {
     UIButtonConfiguration *configuration = UIButtonConfiguration.filledButtonConfiguration;
     configuration.baseBackgroundColor = [UIColor colorWithWhite:0 alpha:.7];
     configuration.baseForegroundColor = UIColor.whiteColor;
-    configuration.title = @"连接 Switch 2 Pro";
+    configuration.title = S2AL(@"controller.connect.title");
     _connect.configuration = configuration;
     _connect.titleLabel.adjustsFontForContentSizeCategory = YES;
-    _connect.accessibilityHint = @"长按手柄顶部 SYNC 键，直到玩家灯循环闪烁";
+    _connect.accessibilityHint = S2AL(@"controller.connect.hint");
     [_connect addTarget:self action:@selector(connectTapped) forControlEvents:UIControlEventTouchUpInside];
     _connect.layer.zPosition = 1001;
     [root addSubview:_connect];
@@ -577,11 +578,11 @@ static void pad_face_sync(void) {
     atomic_load(&g_ns2)->shutdown(reason, 0); // 不在主线程等待电机或连接完成。
     s2a_pad_wake();
     _bleStarted = _bleBusy = NO;
-    [self setTitle:@"连接 Switch 2 Pro" hint:@"长按手柄顶部 SYNC 键，直到玩家灯循环闪烁"];
+    [self setTitle:S2AL(@"controller.connect.title") hint:S2AL(@"controller.connect.hint")];
 }
 - (void)startBLE {
     if (!_adapterEnabled || !_foreground || _hasSystem) return;
-    if (![self loadModule]) { [self setTitle:@"适配模块加载失败" hint:@"请重新安装 App 后重试"]; return; }
+    if (![self loadModule]) { [self setTitle:S2AL(@"controller.moduleFailed.title") hint:S2AL(@"controller.moduleFailed.hint")]; return; }
     const ns2_api *api = atomic_load(&g_ns2);
     if (_bleStarted) { if (api->rescan()) _bleBusy = YES; return; }
     pthread_mutex_lock(&g_feedback_mu);
@@ -594,7 +595,7 @@ static void pad_face_sync(void) {
         pthread_mutex_unlock(&g_motion_mu);
     }
     _bleBusy = _bleStarted;
-    if (!_bleStarted) [self setTitle:@"连接失败，轻点重试" hint:@"再次查找 Switch 2 Pro"];
+    if (!_bleStarted) [self setTitle:S2AL(@"controller.connectFailed.title") hint:S2AL(@"controller.connectFailed.hint")];
 }
 - (void)resumeBLE {
     if (!_adapterEnabled || !_foreground || _hasSystem) return;
@@ -602,7 +603,7 @@ static void pad_face_sync(void) {
         if (_blePaused && atomic_load(&g_ns2)->resume()) {
             _bleResuming = YES;
             _bleBusy = YES;
-            [self setTitle:@"正在恢复手柄，轻点取消" hint:@"正在恢复已连接手柄的输入；轻点可停止连接"];
+            [self setTitle:S2AL(@"controller.resuming.title") hint:S2AL(@"controller.resuming.hint")];
             return;
         }
         // A retained link may have disconnected while iOS suspended the app. Start one bounded known-device attempt.
@@ -612,7 +613,7 @@ static void pad_face_sync(void) {
 }
 - (void)connectTapped {
     if (!_adapterEnabled || !_foreground) return;
-    if (![self loadModule]) { [self setTitle:@"适配模块加载失败" hint:@"请重新安装 App 后重试"]; return; }
+    if (![self loadModule]) { [self setTitle:S2AL(@"controller.moduleFailed.title") hint:S2AL(@"controller.moduleFailed.hint")]; return; }
     if (atomic_load(&g_ns2)->authorization_denied()) {
         [UIApplication.sharedApplication openURL:[NSURL URLWithString:UIApplicationOpenSettingsURLString] options:@{} completionHandler:nil];
         return;
@@ -648,10 +649,10 @@ static void pad_face_sync(void) {
     }
     _bleBusy = _bleResuming || status == NS2_STATUS_SCANNING || status == NS2_STATUS_CONNECTING || status == NS2_STATUS_INITIALIZING ||
         status == NS2_STATUS_SUSPENDING || status == NS2_STATUS_RESUMING;
-    if (_bleBusy) [self setTitle:status == NS2_STATUS_SCANNING ? @"正在查找，轻点取消" : @"正在连接，轻点取消" hint:@"长按手柄顶部 SYNC 键，直到玩家灯循环闪烁。轻点可停止连接"];
+    if (_bleBusy) [self setTitle:status == NS2_STATUS_SCANNING ? S2AL(@"controller.scanning.title") : S2AL(@"controller.connecting.title") hint:S2AL(@"controller.busy.hint")];
     else if (status != NS2_STATUS_READY) {
         BOOL denied = atomic_load(&g_ns2)->authorization_denied();
-        [self setTitle:denied ? @"在设置中允许蓝牙" : status == NS2_STATUS_UNAVAILABLE ? @"打开蓝牙后重试" : @"重新连接 Switch 2 Pro" hint:message];
+        [self setTitle:denied ? S2AL(@"controller.allowBluetooth.title") : status == NS2_STATUS_UNAVAILABLE ? S2AL(@"controller.bluetoothOff.title") : S2AL(@"controller.reconnect.title") hint:message];
     }
     [self updateVisibility];
 }

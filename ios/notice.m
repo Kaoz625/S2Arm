@@ -2,6 +2,7 @@
 //   全部画成和加载页（loadpage.m，10-30 维护者 批准）同一套样子：游戏图标放大模糊铺满整屏（不留边）+ 圆角图标（角上一个状态符号）+ 一句话标题 + 一句「下一步做什么」
 //   + 胶囊按钮（主按钮用启动器品牌色）。技术细节（失败码、文件名、地址上限）只进 host.log / unpack.log，经「导出诊断包」带走，不上屏。本文件只画
 #import "notice.h"
+#import "s2a_l10n.h"
 
 UIColor *s2a_notice_accent(void) { return [UIColor colorWithRed:0.02 green:0.53 blue:0.57 alpha:1]; }   // 启动器 Brand.accent（launchers/macos/Sources/S2ArmLauncher/Appearance.swift）
 
@@ -100,19 +101,20 @@ static UIView *arrow(void) {
 }
 UIView *s2a_notice_help_page(CGRect f, NSString *title, NSString *detail, NSString *app, UIButton *recheck) {
     UIView *content, *page = backdrop(f, &content);
-    UIStackView *pic = [[UIStackView alloc] initWithArrangedSubviews:@[glyph(@"laptopcomputer", @"Mac"), arrow(), glyph(@"cable.connector", @"数据线"), arrow(), glyph(@"iphone.gen3", app)]];
+    UIStackView *pic = [[UIStackView alloc] initWithArrangedSubviews:@[glyph(@"laptopcomputer", @"Mac"), arrow(), glyph(@"cable.connector", S2AL(@"notice.cable")), arrow(), glyph(@"iphone.gen3", app)]];
     pic.spacing = 10; pic.alignment = UIStackViewAlignmentCenter;
     UIImageView *folder = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"folder.fill" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:24 weight:UIImageSymbolWeightRegular]]];
     folder.tintColor = s2a_notice_accent();
-    UILabel *fl = label(15, UIFontWeightMedium, UIColor.labelColor); fl.text = [NSString stringWithFormat:@"「%@资源包」", app];
+    UILabel *fl = label(15, UIFontWeightMedium, UIColor.labelColor); NSString *pack = [NSString stringWithFormat:@"%@资源包", app];   // 设备上的文件夹名（与 Mac 启动器约定），不翻译
+    fl.text = [NSString stringWithFormat:S2AL(@"notice.folder"), pack];
     UIStackView *fr = [[UIStackView alloc] initWithArrangedSubviews:@[folder, fl]]; fr.spacing = 8; fr.alignment = UIStackViewAlignmentCenter;
     UIStackView *left = [[UIStackView alloc] initWithArrangedSubviews:@[pic, fr]]; left.axis = UILayoutConstraintAxisVertical; left.spacing = 20; left.alignment = UIStackViewAlignmentCenter;
     UILabel *t = label(24, UIFontWeightBold, UIColor.labelColor); t.text = title;
     UILabel *d = label(16, UIFontWeightRegular, UIColor.secondaryLabelColor); d.text = detail;
     NSArray *steps = @[
-        @"在 Mac 的 S2Arm 里点这款游戏的「装到 iPhone」，资源会自动拷进来——最省事。",
-        [NSString stringWithFormat:@"或者手动拷：用数据线连上 Mac，打开访达，左边选这台手机 →「文件」→ 找到「%@」。", app],
-        [NSString stringWithFormat:@"把「%@资源包」文件夹整个拖到「%@」上，拷完这里会自动继续。", app, app]];
+        S2AL(@"notice.step1"),
+        [NSString stringWithFormat:S2AL(@"notice.step2"), app],
+        [NSString stringWithFormat:S2AL(@"notice.step3"), pack, app]];
     NSMutableArray *rows = [NSMutableArray arrayWithObjects:t, d, nil];
     for (NSUInteger i = 0; i < steps.count; i++) {
         UILabel *n = label(13, UIFontWeightBold, UIColor.whiteColor); n.text = [NSString stringWithFormat:@"%lu", (unsigned long)i + 1]; n.textAlignment = NSTextAlignmentCenter;

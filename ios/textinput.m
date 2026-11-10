@@ -5,6 +5,7 @@
 #import <UIKit/UIKit.h>
 #include "s2a_text_input.h"
 #import "s2a_text_input_rules.h"
+#import "s2a_l10n.h"
 
 @interface S2ATextInput : NSObject <UITextFieldDelegate>
 @property(nonatomic) int64_t ident;
@@ -61,10 +62,10 @@ static UIViewController *top_controller(void) {
 static void present(S2ATextInput *in, NSDictionary *a) {
     UIViewController *top = top_controller();
     if (!top) { [in finish:0 text:nil]; return; }   // 没有界面可挂：按取消交回（游戏收到取消，不卡）
-    NSString *header = [a[@"header"] length] ? a[@"header"] : @"输入";
+    NSString *header = [a[@"header"] length] ? a[@"header"] : S2AL(@"textinput.title");
     NSMutableArray *lines = [NSMutableArray array];
     if ([a[@"subtitle"] length]) [lines addObject:a[@"subtitle"]];
-    if (in.min > 1 || in.max > 0) [lines addObject:in.max > 0 ? [NSString stringWithFormat:@"%ld–%ld 个字", (long)MAX(in.min, 0), (long)in.max] : [NSString stringWithFormat:@"至少 %ld 个字", (long)in.min]];
+    if (in.min > 1 || in.max > 0) [lines addObject:in.max > 0 ? [NSString stringWithFormat:S2AL(@"textinput.limit.range"), (long)MAX(in.min, 0), (long)in.max] : [NSString stringWithFormat:S2AL(@"textinput.limit.min"), (long)in.min]];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:header message:lines.count ? [lines componentsJoinedByString:@"\n"] : nil preferredStyle:UIAlertControllerStyleAlert];
     __weak S2ATextInput *weak = in;
     [alert addTextFieldWithConfigurationHandler:^(UITextField *f) {
@@ -77,8 +78,8 @@ static void present(S2ATextInput *in, NSDictionary *a) {
         f.accessibilityIdentifier = @"s2a.textinput.field";
         [f addTarget:in action:@selector(changed:) forControlEvents:UIControlEventEditingChanged];
     }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:^(UIAlertAction *x) { (void)x; [weak finish:0 text:nil]; }]];
-    UIAlertAction *ok = [UIAlertAction actionWithTitle:[a[@"submit"] length] ? a[@"submit"] : @"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) {
+    [alert addAction:[UIAlertAction actionWithTitle:S2AL(@"common.cancel") style:UIAlertActionStyleCancel handler:^(UIAlertAction *x) { (void)x; [weak finish:0 text:nil]; }]];
+    UIAlertAction *ok = [UIAlertAction actionWithTitle:[a[@"submit"] length] ? a[@"submit"] : S2AL(@"textinput.ok") style:UIAlertActionStyleDefault handler:^(UIAlertAction *x) {
         (void)x; S2ATextInput *s = weak; UIAlertController *al = s.alert;
         [s finish:1 text:s2a_text_input_clip(al.textFields.firstObject.text ?: @"", s.max)];
     }];

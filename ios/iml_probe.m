@@ -8,6 +8,7 @@
 //   结果写 Documents/diag/iml_probe.json（Mac 前端「拉回诊断」读 has_iml_ent，见 pack/jobs/diag.py）；丢了打日志一行【红】，游戏照常进（不中止）。
 //   调用点：app.m s2a_front_run → s2a_iml_probe_check()（启动后立刻，不等进游戏）。
 #import <Foundation/Foundation.h>
+#import "s2a_l10n.h"
 #include <mach-o/ldsyms.h>
 #include "native.h"
 #include <CoreFoundation/CoreFoundation.h>
@@ -71,8 +72,7 @@ void s2a_iml_probe_check(void) {
             if (![[u stringForKey:@"S2AIMLLostNoticeBuild"] isEqualToString:build]) {
                 [u setObject:build forKey:@"S2AIMLLostNoticeBuild"];
                 void s2a_dprompt_notice(NSString *title, NSString *body, double delay, double seconds);
-                s2a_dprompt_notice(@"这次安装丢了「提高内存上限」权限",
-                    @"大游戏可能内存不够或变慢。请用 Xcode 或 AltStore Classic v2.3 重签后重装，或用 GetMoreRam 给 App ID 补上权限后重装。", 3, 15);
+                s2a_dprompt_notice(S2AL(@"iml.lost.title"), S2AL(@"iml.lost.body"), 3, 15);
             }
         }
     }

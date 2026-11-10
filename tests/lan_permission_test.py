@@ -49,7 +49,7 @@ assert 'if (lan_is_current(lan)) [lan start:pid];' in a
 print('source contracts: cached mode placement and both deferred-callback gates passed; UIKit untested')
 # 审计 P2-17：没有界面时不开始找设备，挂到「根视图就绪」（ios/root_ready.m s2a_ios_on_root_view，行为由 t_ios_root_ready notify 实测）后回来先说明。
 perm = (root / 'ios/lan_permission.m').read_text()
-then = perm[perm.index('void s2a_lan_permission_then('):perm.index('UIAlertController *a = [UIAlertController alertControllerWithTitle:@"本地联机要用')]
+then = perm[perm.index('void s2a_lan_permission_then('):perm.index('UIAlertController *a = [UIAlertController alertControllerWithTitle:S2AL(@"lan.permission.title")')]
 no_ui = then[then.index('if (!top) {'):]
 assert 'go()' not in no_ui, 'no-UI branch must not start discovery'
 assert 's2a_ios_on_root_view(retry)' in no_ui and 's2a_lan_permission_then(dev_mode, go)' in no_ui

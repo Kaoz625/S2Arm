@@ -5,6 +5,7 @@ int s2a_fps_cap_reason(void) __attribute__((weak_import));
 #import "vpad.h"
 #import "vpad_settings.h"
 #import "cpatch_settings.h"
+#import "s2a_l10n.h"
 #include "s2a_direct_prompt.h"   // 「换一款游戏」文案（与 launchers/shared/experience.v1.json prompts 逐字一致，中英同屏）
 #include <math.h>
 
@@ -41,7 +42,7 @@ static NSArray *toggleKeys(void) {
     return @[@"S2ANS2ProAdapterEnabled", @"S2APhoneGyro", @"S2APhoneHaptics", @"S2ADiagExportOnOpen", @"S2ADevHUD", @"MetalHUDForceEnabled", @"S2AWidescreen", @"S2AFps60", @"S2A.touchHud", @"S2ADockedMode"];
 }
 static NSArray *toggleTitles(void) {
-    return @[@"启用 Switch 2 Pro 手柄", @"手机陀螺仪", @"手机震动", @"下次打开时导出诊断包", @"显示 S2Arm 诊断浮层", @"显示 Metal 性能浮层", @"宽屏", @"60 帧", @"触屏诊断信息", @"主机模式"];
+    return @[S2AL(@"vpad.menu.ns2pro"), S2AL(@"vpad.menu.gyro"), S2AL(@"settings.toggle.phoneHaptics"), S2AL(@"settings.toggle.diagExportOnOpen"), S2AL(@"settings.toggle.devHud"), S2AL(@"settings.toggle.metalHud"), S2AL(@"cpatch.group.widescreen"), S2AL(@"cpatch.group.fps"), S2AL(@"settings.toggle.touchHud"), S2AL(@"settings.toggle.docked")];
 }
 static UILabel *textLabel(UIFontTextStyle style) {
     UILabel *label = [UILabel new]; label.font = [UIFont preferredFontForTextStyle:style];
@@ -64,16 +65,16 @@ static UILabel *textLabel(UIFontTextStyle style) {
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     NSInteger g = self.groups[section].integerValue;
     if (g == 5) return @S2A_DPROMPT_SWITCH_GAME_TITLE " · " S2A_DPROMPT_SWITCH_GAME_TITLE_EN;
-    return @[@"画面", @"操作", @"诊断", @"开发", @"存档"][g];
+    return @[S2AL(@"cpatch.group.gfx"), S2AL(@"settings.section.controls"), S2AL(@"settings.section.diagnostics"), S2AL(@"settings.section.developer"), S2AL(@"settings.section.saves")][g];
 }
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     switch (self.groups[section].integerValue) {
-        case 0: return @"重新启动游戏后生效。游戏运行时，完成设置可选择立刻重启；请先在游戏内保存进度。\n主机模式对应 Switch 连接底座时的模式，关闭时使用掌机模式。实际分辨率和画质由游戏决定；与兼容 / 高性能运行模式分别设置。\n宽屏和 60 帧需资源包支持，开启后可能增加负载和耗电。";
-        case 1: return @"未连接手柄时，可使用手机陀螺仪和震动。";
-        case 2: return @"包含近期运行日志和诊断信息，不含游戏文件、密钥或存档。\n下次打开或切回游戏时导出，随后自动关闭此选项。";
-        case 4: return @"请先在游戏内保存进度，退出并重新打开后管理存档。";
+        case 0: return S2AL(@"settings.footer.display");
+        case 1: return S2AL(@"settings.footer.controls");
+        case 2: return S2AL(@"settings.footer.diagnostics");
+        case 4: return S2AL(@"settings.footer.saves");
         case 5: return nil;
-        default: return @"下次启动生效。\nS2Arm 浮层：显示目标帧率、慢帧比例、图形模式、首次编译、音频状态和包号。\nMetal 性能浮层：显示帧率、GPU 时间和帧间隔曲线。仅供开发设备上手动观察；开启时不使用截图、存帧、自动玩家或满屏判定。";
+        default: return S2AL(@"settings.footer.developer");
     }
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)path {
@@ -100,7 +101,7 @@ static UILabel *textLabel(UIFontTextStyle style) {
     _entryGraphics = s2a_ios_graphics_snapshot(NSUserDefaults.standardUserDefaults);
     _patchGroups = s2a_cpatch_bundled_groups();
     _entryPatches = S2ACPatchEnabled(_patchGroups, NSUserDefaults.standardUserDefaults);
-    self.title = @"设置"; return self;
+    self.title = S2AL(@"common.settings"); return self;
 }
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -119,7 +120,7 @@ static UILabel *textLabel(UIFontTextStyle style) {
     [NSLayoutConstraint activateConstraints:@[
         [_columns.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor], [_columns.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor],
         [_columns.topAnchor constraintEqualToAnchor:safe.topAnchor], [_columns.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor]]];
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"完成" style:UIBarButtonItemStyleDone target:self action:@selector(done)];
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:S2AL(@"common.done") style:UIBarButtonItemStyleDone target:self action:@selector(done)];
     self.navigationItem.rightBarButtonItem.accessibilityIdentifier = @"settings.done";
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(refresh) name:NSUserDefaultsDidChangeNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(refresh) name:UIApplicationDidBecomeActiveNotification object:nil];
@@ -160,8 +161,8 @@ static UILabel *textLabel(UIFontTextStyle style) {
     [_left.tableView reloadData]; [_right.tableView reloadData];
 }
 - (void)showError:(NSString *)message {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"设置未完成" message:message preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"返回设置" style:UIAlertActionStyleCancel handler:nil]];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:S2AL(@"settings.error.title") message:message preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:S2AL(@"settings.error.back") style:UIAlertActionStyleCancel handler:nil]];
     [self.navigationController.topViewController presentViewController:alert animated:YES completion:nil];
 }
 - (UITableViewCell *)baseCell:(NSString *)title {
@@ -175,7 +176,7 @@ static UILabel *textLabel(UIFontTextStyle style) {
 - (UITableViewCell *)dropdown:(NSString *)title labels:(NSArray *)labels selected:(NSInteger)selected enabled:(BOOL (^)(NSInteger))enabled choose:(void (^)(NSInteger))choose identifier:(NSString *)identifier {
     UITableViewCell *cell = [self baseCell:title]; cell.selectionStyle = UITableViewCellSelectionStyleNone;
     UIButtonConfiguration *config = UIButtonConfiguration.plainButtonConfiguration;
-    config.title = selected >= 0 ? labels[selected] : @"未启动游戏";
+    config.title = selected >= 0 ? labels[selected] : S2AL(@"settings.dropdown.noGame");
     config.image = [UIImage systemImageNamed:@"chevron.down"]; config.imagePlacement = NSDirectionalRectEdgeTrailing; config.imagePadding = 6;
     UIButton *button = [UIButton buttonWithConfiguration:config primaryAction:nil];
     button.accessibilityLabel = title; button.accessibilityValue = config.title; button.accessibilityIdentifier = identifier;
@@ -225,29 +226,29 @@ static UILabel *textLabel(UIFontTextStyle style) {
     control.accessibilityLabel = toggleTitles()[index]; control.accessibilityIdentifier = [@"settings." stringByAppendingString:key];
     // 本款原生 60 帧（运行时判定后记在 S2AFpsNative60，app.m s2a_ios_fps_native60）：开关改不动帧率，显示原因、置灰（11-02 维护者 丝之歌关了照样 60 帧、以为没生效）
     if ([key isEqualToString:@"S2AFps60"] && [NSUserDefaults.standardUserDefaults boolForKey:@"S2AFpsNative60"]) {
-        control.on = YES; control.enabled = NO; cell.detailTextLabel.text = @"本款原生 60 帧"; control.accessibilityValue = @"本款原生 60 帧";
+        control.on = YES; control.enabled = NO; cell.detailTextLabel.text = S2AL(@"settings.fps60.native"); control.accessibilityValue = cell.detailTextLabel.text;
         cell.accessoryView = control; return cell; }
     // 包里 60 帧是关的（强信号：逻辑速度红 / 崩溃 / 卡死 / 帧率达不到；11-02 起全引擎默认开，只有强信号才关）：开关显示玩家手动开没开（S2AFps60Manual，缺省关、不跟 S2AFps60 的缺省开），打开时先提示（11-02 维护者 / 维护者 定的文案）；下次启动生效（settings.m）
     // 包里满屏是关的（强信号：满屏画面坏 / 崩溃归因，tools/caps_policy.py）：设置开关改不动，如实显示关、置灰、写原因（不再缺省显示开、按了没用）
     if ([key isEqualToString:@"S2AWidescreen"] && s2a_ios_caps_value("widen") == 0) {
-        control.on = NO; control.enabled = NO; cell.detailTextLabel.text = @"本款满屏有已知问题，暂不可开"; control.accessibilityValue = cell.detailTextLabel.text;
+        control.on = NO; control.enabled = NO; cell.detailTextLabel.text = S2AL(@"settings.widescreen.knownIssue"); control.accessibilityValue = cell.detailTextLabel.text;
         cell.accessoryView = control; return cell; }
     if ([key isEqualToString:@"S2AFps60"] && s2a_ios_caps_value("fps60") == 0) {
         NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
-        control.on = [d boolForKey:@"S2AFps60Manual"]; cell.detailTextLabel.text = @"本款 60 帧有已知问题";
+        control.on = [d boolForKey:@"S2AFps60Manual"]; cell.detailTextLabel.text = S2AL(@"settings.fps60.knownIssue");
         __weak S2ASettingsController *weakSelf = self;
         [control addAction:[UIAction actionWithHandler:^(UIAction *action) {
             BOOL on = ((UISwitch *)action.sender).on;
             [d setBool:on forKey:@"S2AFps60Manual"];
             if (!on) return;
             [d setBool:YES forKey:@"S2AFps60"];   // 先前关过 60 帧（存着 NO）会压过手动开（settings.m 关的分支在前）
-            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"60 帧" message:@"此游戏开 60 帧有已知问题，若游戏速度异常请关闭" preferredStyle:UIAlertControllerStyleAlert];
-            [alert addAction:[UIAlertAction actionWithTitle:@"知道了" style:UIAlertActionStyleCancel handler:nil]];
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:S2AL(@"cpatch.group.fps") message:S2AL(@"settings.fps60.knownIssue.message") preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:S2AL(@"common.gotIt") style:UIAlertActionStyleCancel handler:nil]];
             [weakSelf.navigationController.topViewController presentViewController:alert animated:YES completion:nil];
         }] forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = control; return cell; }
     // 60 帧开着、此刻因发热 / 低电量降档（runtime/src/fps.c）：开关仍是玩家选的开，副标题写清楚画面暂时是原生帧率（审计 P1-80）
-    if ([key isEqualToString:@"S2AFps60"] && control.on) { int cap = s2a_fps_cap_reason ? s2a_fps_cap_reason() : 0; if (cap == 1 || cap == 2) cell.detailTextLabel.text = cap == 1 ? @"已暂时回到原生帧率（手机发热）" : @"已暂时回到原生帧率（低电量模式）"; }
+    if ([key isEqualToString:@"S2AFps60"] && control.on) { int cap = s2a_fps_cap_reason ? s2a_fps_cap_reason() : 0; if (cap == 1 || cap == 2) cell.detailTextLabel.text = cap == 1 ? S2AL(@"settings.fps60.capped.thermal") : S2AL(@"settings.fps60.capped.lowPower"); }
     [control addAction:[UIAction actionWithHandler:^(UIAction *action) {
         BOOL enabled = ((UISwitch *)action.sender).on;
         if ([key isEqualToString:@"S2A.touchHud"]) s2a_vpad_set_touch_hud(enabled);
@@ -270,13 +271,13 @@ static UILabel *textLabel(UIFontTextStyle style) {
         return cell;
     }
     if (group == 4) {
-        UITableViewCell *cell = [self baseCell:@"管理存档…"];
+        UITableViewCell *cell = [self baseCell:S2AL(@"settings.manageSaves")];
         cell.textLabel.textColor = self.view.tintColor; cell.accessibilityIdentifier = @"settings.manageSaves";
         return cell;
     }
     if (group == 0) {
         if (row == 7) {
-            UITableViewCell *cell = [self baseCell:@"社区补丁"];
+            UITableViewCell *cell = [self baseCell:S2AL(@"cpatch.title")];
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator; cell.accessibilityIdentifier = @"settings.communityPatches";
             return cell;
         }
@@ -291,12 +292,12 @@ static UILabel *textLabel(UIFontTextStyle style) {
         } identifier:@"settings.filter"];
     }
     if (group == 1 && row == 0) {
-        UITableViewCell *cell = [self baseCell:@"触屏布局"]; cell.detailTextLabel.text = s2a_vpad_layout_name();
+        UITableViewCell *cell = [self baseCell:S2AL(@"vpad.layouts.title")]; cell.detailTextLabel.text = s2a_vpad_layout_name();
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator; cell.accessibilityIdentifier = @"settings.layouts";
         cell.userInteractionEnabled = s2a_vpad_has_layouts(); if (!cell.userInteractionEnabled) cell.textLabel.textColor = UIColor.secondaryLabelColor;
         return cell;
     }
-    if (group == 2 && row == 0) { UITableViewCell *cell = [self baseCell:@"导出诊断包"]; cell.textLabel.textColor = self.view.tintColor; cell.accessibilityIdentifier = @"settings.export"; return cell; }
+    if (group == 2 && row == 0) { UITableViewCell *cell = [self baseCell:S2AL(@"settings.export")]; cell.textLabel.textColor = self.view.tintColor; cell.accessibilityIdentifier = @"settings.export"; return cell; }
     if (group == 2 && row == 2) return [self toggleCell:8];
     return [self toggleCell:group == 1 ? row - 1 : group == 2 ? 3 : row + 4];
 }
@@ -333,13 +334,13 @@ static UILabel *textLabel(UIFontTextStyle style) {
         ![_entryPatches isEqual:S2ACPatchEnabled(_patchGroups, NSUserDefaults.standardUserDefaults)];
     if (!changed) { [self close]; return; }
     BOOL canRestart = _runtime.restart && _runtime.canRestart && _runtime.canRestart();
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"画面设置需要重启后生效"
-        message:canRestart ? @"是否立刻重启游戏？未保存的进度会丢失，请确认已在游戏内保存进度。" : @"保存的设置将在下次启动游戏时生效。"
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:S2AL(@"settings.restart.title")
+        message:canRestart ? S2AL(@"settings.restart.message") : S2AL(@"settings.restart.messageLater")
         preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:canRestart ? @"稍后自行重启" : @"完成" style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) { [self close]; }]];
+    [alert addAction:[UIAlertAction actionWithTitle:canRestart ? S2AL(@"settings.restart.later") : S2AL(@"common.done") style:UIAlertActionStyleCancel handler:^(UIAlertAction *action) { [self close]; }]];
     if (canRestart) {
         __weak UIAlertController *weakAlert = alert;
-        UIAlertAction *restart = [UIAlertAction actionWithTitle:@"立刻重启" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        UIAlertAction *restart = [UIAlertAction actionWithTitle:S2AL(@"settings.restart.now") style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
             // An immediate provider rejection must not try to present an error
             // over a confirmation that is still dismissing.
             UIAlertController *confirmation = weakAlert;
@@ -359,14 +360,14 @@ static UILabel *textLabel(UIFontTextStyle style) {
     UIGestureRecognizer *back = self.navigationController.interactivePopGestureRecognizer;
     BOOL backEnabled = back.enabled; back.enabled = NO;
     top.view.userInteractionEnabled = NO; top.navigationItem.hidesBackButton = YES;
-    self.title = top.title = @"正在重启游戏…";
+    self.title = top.title = S2AL(@"settings.restart.progress");
     UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, self.title);
     _runtime.restart(^(NSString *error) {
         self->_restarting = NO; self->_columns.userInteractionEnabled = YES;
         top.view.userInteractionEnabled = YES; top.navigationItem.hidesBackButton = hiddenBack;
         back.enabled = backEnabled;
         top.title = title;
-        self.title = @"设置"; [self refresh];
+        self.title = S2AL(@"common.settings"); [self refresh];
         if (error) [self showError:error]; else [self close];
     });
 }

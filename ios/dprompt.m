@@ -2,6 +2,7 @@
 //   贴画面顶部居中（两侧肩键之间），只占自己那一块，别处的触摸照常给游戏和虚拟手柄；带两个按钮的 seconds 秒没理会按「否」收起。
 #import <UIKit/UIKit.h>
 #import <GameController/GameController.h>
+#import "s2a_l10n.h"
 #include "s2a_direct_prompt.h"
 #include "native.h"
 #include "s2a_unattended.h"
@@ -66,9 +67,9 @@ void s2a_dprompt_attach(UIView *root) {
     double h = s2a_prov_hours_left_self();
     if (!isnan(h) && h < 48) {
         LOG("签名到期提示：描述文件还剩 %.1f 小时", h);
-        NSString *left = h < 1 ? @"不到 1 小时" : [NSString stringWithFormat:@"约 %d 小时", (int)h];
+        NSString *left = h < 1 ? S2AL(@"dprompt.signExpiry.lessThanHour") : [NSString stringWithFormat:S2AL(@"dprompt.signExpiry.hours"), (int)h];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-            if (g_banner.hidden) show(@"签名快到期了", [NSString stringWithFormat:@"还剩%@。到期后游戏打不开，存档不会丢：连上手机再点一次「装到 iPhone」，或在 AltStore 里刷新。", left], nil, nil, 15); });
+            if (g_banner.hidden) show(S2AL(@"dprompt.signExpiry.title"), [NSString stringWithFormat:S2AL(@"dprompt.signExpiry.body"), left], nil, nil, 15); });
     }
     // Switch 2 Pro 手柄缺省不连（每 App 开关，开了才扫蓝牙）：从没设过这个开关、起局 20 秒还没有任何系统认得的手柄时，说一次去哪开（审计 P2-4）。
     //   只提示一次（S2ANS2ProHintShown）；自动化局不提示（s2a_unattended，日志由工具拉回）
@@ -77,7 +78,7 @@ void s2a_dprompt_attach(UIView *root) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
             if (GCController.controllers.count || [u objectForKey:@"S2ANS2ProAdapterEnabled"]) return;
             [u setBool:YES forKey:@"S2ANS2ProHintShown"];
-            s2a_dprompt_notice(@"用 Switch 2 Pro 手柄？", @"四指长按屏幕 1.5 秒打开设置，打开「启用 Switch 2 Pro 手柄」，再按手柄上的配对键。", 0, 12); });
+            s2a_dprompt_notice(S2AL(@"dprompt.ns2pro.title"), S2AL(@"dprompt.ns2pro.body"), 0, 12); });
 }
 
 // 只有「知道了」的提示条（别的模块用，主线程）：delay 秒后显示；横幅正被别的提示占着就再等 5 秒，不顶掉（审计 P2-3 IML 权限丢失）

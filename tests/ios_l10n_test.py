@@ -2,7 +2,7 @@
 """iOS 宿主界面本地化（#316）单测：游戏内菜单 / 触屏布局 / 金手指 / 社区补丁页的文字走 S2AL(@"键")（ios/s2a_l10n.h），
 字符串表 ios/l10n/{en,zh-Hans}.lproj/S2ArmHost.strings；iOS「设置」App 的 S2Arm 页 Root.plist 原文英文、zh-Hans.lproj/Root.strings 译中文。
 期望按规则手写，不跑被测代码：
-  ① 范围内 7 个 .m 里，除注释与日志调用（NSLog / LOG / s2a_log / fprintf / printf）外，不再有含中文的 @"…" 字面量；
+  ① ios/ 下全部 .m（11-10 起，原先只扫 7 个）里，除注释与日志调用（NSLog / LOG / s2a_log / fprintf / printf）外，不再有含中文的 @"…" 字面量；
      与别的代码比对的标识串（金手指条目名 / 状态值是与服务层 Cheats.cs 约定的串、切换原因只进日志）列在 IDENT 里，逐条写明理由，且必须真的还在
   ② 代码里每个 S2AL 的参数都是 @"键" 字面量；每个键在 en / zh-Hans 两表都有；两表键集合相同、无重复键；表里没有代码不用的孤儿键
   ③ 同一个键两表的格式占位符（%@ %d %.1f %1$@ …，按位置归一）一致
@@ -12,9 +12,9 @@
 import os, pathlib, plistlib, re, shutil, subprocess, sys
 
 H = pathlib.Path(__file__).resolve().parents[1]
-SRCS = ['ios/vpad.m', 'ios/vpad_settings.m', 'ios/vpad_layout.m', 'ios/vpad_cheats.m', 'ios/vpad_shell.m', 'ios/cpatch_settings.m', 'ios/cpatch_model.m', 'ios/ota_download.m']
-# 只核键引用、不扫中文字面量的文件：设置 App「关于本包」的值（settings.m 其余中文是日志 / 注释，不在 #316 范围）
-KEY_ONLY = ['ios/settings.m']
+# 11-10 英文默认（维护者：英文设备上看到中文）：扫 ios/ 下全部 .m（输入工作台 ios/lab/ 是开发自用，不在内）
+SRCS = sorted(str(p.relative_to(H)) for p in H.glob('ios/*.m'))
+KEY_ONLY = []
 TABLES = {'en': 'ios/l10n/en.lproj/S2ArmHost.strings', 'zh-Hans': 'ios/l10n/zh-Hans.lproj/S2ArmHost.strings'}
 ROOT_PLIST, ROOT_STRINGS = 'ios/Settings.bundle/Root.plist', 'ios/Settings.bundle/zh-Hans.lproj/Root.strings'
 LOG_CALLS = {'NSLog', 'LOG', 's2a_log', 'fprintf', 'printf'}
@@ -22,6 +22,12 @@ CHEATS_CS = '与服务层 Cheats.cs 约定的串（status.txt 状态值 / 条目
 IDENT = {   # 文件 → {字面量: 不改的理由}
     'ios/vpad.m': {'提示条': 'setTouchOnly:why: 的原因串，只进日志「触屏布局：切到…」', '未注明': 's2a_vpad_set_touch_only 的原因缺省值，只进日志'},
     'ios/ota_download.m': {'资源包': '设备侧资源包目录名（推送契约 tools/push_pack.py / runtime/src/pack_apply.c 同名路径段），不显示'},
+    'ios/ota_place.m': {'资源包': '设备侧资源包目录名（推送契约 tools/push_pack.py / runtime/src/pack_apply.c 同名路径段），不显示'},
+    'ios/diag.m': {'资源包': '设备侧资源包目录名（推送契约 tools/push_pack.py / runtime/src/pack_apply.c 同名路径段），不显示', '<设备名>': '诊断包里替换设备名的占位，写进诊断文件、不上屏', '\\n…截掉 %lu 字节…\\n': '截断日志时写进诊断文件的标记，不上屏'},
+    'ios/loadpage.m': {'Documents/资源包': '资源包目录路径（同上），不显示'},
+    'ios/notice.m': {'%@资源包': '拼出设备上真实的资源包目录名（Mac 启动器导出的「<App 名>资源包」），作为参数填进译好的句子'},
+    'ios/diagredact.m': {'/Users/<用户>': '诊断脱敏替换串，写进诊断文件', '[^\\\\s\\"\'<>:=,;{}\\\\[\\\\]，。]+的(iPhone|iPad)': '脱敏正则（匹配中文设备名「某某的 iPhone」）', '[DEVICE_NAME]的$1': '脱敏替换串，写进诊断文件'},
+    'ios/settings.m': {'读取画面设置 %s 失败：%s': 'NSException 原因，只进崩溃 / 诊断', '重读画面设置 %@ 失败：%s': 'NSException 原因，只进崩溃 / 诊断'},
     'ios/vpad_cheats.m': {s: CHEATS_CS for s in ('未命名', '主代码', '生效中', '地址未就绪', '执行出错', '改代码，不支持', '格式不对', '版本不符', '关', '游戏未装载', '指令有误')},
 }
 CJK = re.compile('[㐀-䶿一-鿿　-〿！（），：；？]')
