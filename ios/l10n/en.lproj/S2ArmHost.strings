@@ -219,3 +219,33 @@
 "about.mode.direct" = "Direct";
 "about.mode.unrecorded" = "Unknown (this package did not record a graphics mode)";
 "about.unknown" = "Unknown";
+
+/* OTA 资源包下载（ios/ota_download.m） */
+"ota.button.download" = "Download";
+"ota.button.ok" = "OK";
+"ota.button.close" = "Close";
+"ota.button.pause" = "Pause";
+"ota.button.hide" = "Hide";
+"ota.button.resume" = "Resume";
+"ota.button.retry" = "Try Again";
+"ota.caption" = "%1$@ of %2$@ · file %3$d of %4$d";
+"ota.title.preparing" = "Preparing Download";
+"ota.body.preparing" = "Reading the file list for this game…";
+"ota.title.downloading" = "Downloading Game Data";
+"ota.body.downloading" = "The screen stays on while downloading. You can switch apps; the download continues and resumes where it stopped.";
+"ota.title.paused" = "Download Paused";
+"ota.body.paused" = "Downloaded parts are kept. Tap Resume to continue from where it stopped.";
+"ota.title.failed" = "Download Didn’t Finish";
+"ota.body.failed" = "Check the connection and try again; downloaded parts are kept. If it keeps failing, the download link may have changed.";
+"ota.title.done" = "Game Data Downloaded";
+"ota.body.done" = "Tap Play in the library. The game data is imported the first time it starts.";
+"ota.title.nospace" = "Not Enough Storage";
+"ota.body.nospace" = "This download needs %1$@ free (download plus 2 GB to unpack); %2$@ is available. Free up space and try again.";
+"ota.title.busy" = "Another Download Is Running";
+"ota.body.busy" = "Wait for it to finish, or pause it first.";
+"ota.title.noentry" = "No Download for This Game";
+"ota.body.noentry" = "The download catalog doesn’t list this game.";
+"ota.title.pick" = "Download a Game";
+"ota.body.pick" = "Choose a game from the download catalog.";
+"ota.body.pick.none" = "Every game in the download catalog is already on this device.";
+"ota.body.catalog" = "Couldn’t read the download catalog. Check the link (it must start with https://) and the connection.";

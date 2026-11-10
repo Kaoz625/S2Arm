@@ -219,3 +219,33 @@
 "about.mode.direct" = "直连";
 "about.mode.unrecorded" = "未知（这个包没有记录画面模式）";
 "about.unknown" = "未知";
+
+/* OTA 资源包下载（ios/ota_download.m） */
+"ota.button.download" = "下载";
+"ota.button.ok" = "好";
+"ota.button.close" = "关闭";
+"ota.button.pause" = "暂停";
+"ota.button.hide" = "收起";
+"ota.button.resume" = "继续";
+"ota.button.retry" = "再试一次";
+"ota.caption" = "%1$@ / %2$@ · 第 %3$d / %4$d 个文件";
+"ota.title.preparing" = "正在准备下载";
+"ota.body.preparing" = "正在读取这款游戏的文件清单…";
+"ota.title.downloading" = "正在下载游戏资源";
+"ota.body.downloading" = "下载期间屏幕不会自动锁定。可以切到别的 App，下载会接着进行，断了会从断点接着下。";
+"ota.title.paused" = "下载已暂停";
+"ota.body.paused" = "已下好的部分都留着，点「继续」从断点接着下。";
+"ota.title.failed" = "下载没完成";
+"ota.body.failed" = "检查网络后再试一次，已下好的部分会留着。一直不行的话，可能是下载地址换了。";
+"ota.title.done" = "游戏资源下载完成";
+"ota.body.done" = "回到游戏库点「开始」，第一次打开时会自动导入。";
+"ota.title.nospace" = "存储空间不够";
+"ota.body.nospace" = "这次下载要 %1$@ 可用空间（下载量 + 解开用的 2 GB），现在只有 %2$@。清出空间后再试。";
+"ota.title.busy" = "另一款正在下载";
+"ota.body.busy" = "等它下完，或先把它暂停。";
+"ota.title.noentry" = "这款游戏没有下载";
+"ota.body.noentry" = "下载目录里没有这款游戏。";
+"ota.title.pick" = "下载游戏";
+"ota.body.pick" = "从下载目录里选一款。";
+"ota.body.pick.none" = "下载目录里的游戏都已经在这台设备上了。";
+"ota.body.catalog" = "读不到下载目录。检查链接（要以 https:// 开头）和网络。";

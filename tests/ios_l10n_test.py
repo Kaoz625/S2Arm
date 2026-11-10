@@ -12,7 +12,7 @@
 import os, pathlib, plistlib, re, shutil, subprocess, sys
 
 H = pathlib.Path(__file__).resolve().parents[1]
-SRCS = ['ios/vpad.m', 'ios/vpad_settings.m', 'ios/vpad_layout.m', 'ios/vpad_cheats.m', 'ios/vpad_shell.m', 'ios/cpatch_settings.m', 'ios/cpatch_model.m']
+SRCS = ['ios/vpad.m', 'ios/vpad_settings.m', 'ios/vpad_layout.m', 'ios/vpad_cheats.m', 'ios/vpad_shell.m', 'ios/cpatch_settings.m', 'ios/cpatch_model.m', 'ios/ota_download.m']
 # 只核键引用、不扫中文字面量的文件：设置 App「关于本包」的值（settings.m 其余中文是日志 / 注释，不在 #316 范围）
 KEY_ONLY = ['ios/settings.m']
 TABLES = {'en': 'ios/l10n/en.lproj/S2ArmHost.strings', 'zh-Hans': 'ios/l10n/zh-Hans.lproj/S2ArmHost.strings'}
@@ -21,6 +21,7 @@ LOG_CALLS = {'NSLog', 'LOG', 's2a_log', 'fprintf', 'printf'}
 CHEATS_CS = '与服务层 Cheats.cs 约定的串（status.txt 状态值 / 条目名，比对与开关键照原样用），显示经 cheat_status_text / cheats.unnamed 换语言'
 IDENT = {   # 文件 → {字面量: 不改的理由}
     'ios/vpad.m': {'提示条': 'setTouchOnly:why: 的原因串，只进日志「触屏布局：切到…」', '未注明': 's2a_vpad_set_touch_only 的原因缺省值，只进日志'},
+    'ios/ota_download.m': {'资源包': '设备侧资源包目录名（推送契约 tools/push_pack.py / runtime/src/pack_apply.c 同名路径段），不显示'},
     'ios/vpad_cheats.m': {s: CHEATS_CS for s in ('未命名', '主代码', '生效中', '地址未就绪', '执行出错', '改代码，不支持', '格式不对', '版本不符', '关', '游戏未装载', '指令有误')},
 }
 CJK = re.compile('[㐀-䶿一-鿿　-〿！（），：；？]')

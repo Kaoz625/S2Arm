@@ -45,3 +45,6 @@
 "Build ID" = "包号";
 "Metal HUD" = "Metal HUD";
 "Unknown (shown after opening a game once)" = "未知（打开一次游戏后显示）";
+"Wireless Download" = "无线下载";
+"Download game data over HTTPS when you are away from your Mac. Paste the catalog link (https://…) or open an s2arm://download link; in the game library, a game that is missing its data then offers Download." = "不在 Mac 旁边时经 HTTPS 下载游戏资源。粘贴下载目录链接（https://…），或打开 s2arm://download 链接；之后游戏库里缺资源的游戏会多一个「下载」。";
+"Catalog URL" = "下载目录链接";

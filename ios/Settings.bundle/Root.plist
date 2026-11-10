@@ -294,6 +294,30 @@
                 <string>Unknown (shown after opening a game once)</string>
             </array>
         </dict>
+        <dict>
+            <key>Type</key>
+            <string>PSGroupSpecifier</string>
+            <key>Title</key>
+            <string>Wireless Download</string>
+            <key>FooterText</key>
+            <string>Download game data over HTTPS when you are away from your Mac. Paste the catalog link (https://…) or open an s2arm://download link; in the game library, a game that is missing its data then offers Download.</string>
+        </dict>
+        <dict>
+            <key>Type</key>
+            <string>PSTextFieldSpecifier</string>
+            <key>Title</key>
+            <string>Catalog URL</string>
+            <key>Key</key>
+            <string>S2AOtaCatalogURL</string>
+            <key>DefaultValue</key>
+            <string></string>
+            <key>KeyboardType</key>
+            <string>URL</string>
+            <key>AutocapitalizationType</key>
+            <string>None</string>
+            <key>AutocorrectionType</key>
+            <string>No</string>
+        </dict>
     </array>
 </dict>
 </plist>
