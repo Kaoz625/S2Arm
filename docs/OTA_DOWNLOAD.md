@@ -116,3 +116,43 @@ https://host/ota/<ID>/tars/...
 - When a chunk fails, the bytes of that chunk (up to 256 MB) are fetched again. System
   `resumeData` is not used.
 - The `key` from the open-URL is stored in `NSUserDefaults`, not the Keychain.
+
+## Single-game app with the pack inside (bundled pack)
+
+One iOS app per game, with the game data inside the app: install it from a web page with one
+tap and it plays, with no library screen and no separate download.
+
+```
+python3 tools/single_game_app.py --shell <shell dir> --kit <product root> --ota <export dir> \
+    --out LinksAwakening.ipa [--display-name "Link's Awakening"] [--icon <icon>] [--bundle-id <id>]
+```
+
+- The app is a one-game container (`ship_ext.py container --solo`) with the export from
+  `tools/ota_pack.py export` copied, unchanged, to `S2Arm.app/Games/<ID>/ota/` (APFS clones
+  on the Mac, so it costs no space there).
+- Bundle id defaults to `io.s2arm.games.<id in lower case>`, so several game apps can be
+  installed side by side. The home-screen name is the game's. `Info.plist` gets an ASCII
+  version, and every language gets its exact name in `<lang>.lproj/InfoPlist.strings`. The
+  icon is the game's `icon.jpg` from the kit.
+- The IPA is zip64 because one image can be 6–30 GB. Large files that do not compress are
+  stored as-is. The tool also writes the Xcode build-environment keys (`DTPlatformName`,
+  `DTSDKName`, `DTXcode`, …, `LSRequiresIPhoneOS`) into the app and into
+  `Frameworks/*.framework`. It reads their values from `xcodebuild`, `xcrun` and `sw_vers`
+  (`pack/xcode_keys.py`).
+- **First launch** (`ios/app.m` `soloStart`; `ios/ota_download.m`
+  `s2a_ota_bundled_install`; `ios/ota_place.m`): if `Documents/games/<ID>/资源包` is not
+  ready, the bundled files are placed the way the downloader places them. The same `dest`
+  rules apply: `.applied` is cleared before a direct image, and `index.tsv` and then
+  `manifest.json` go last. Each file is `clonefile(2)`'d from the bundle (same APFS volume,
+  so it is near-instant and takes almost no space). If cloning fails, it falls back to
+  `copyfile(COPYFILE_CLONE)` and then a plain copy, after a free-space check. Sizes are
+  checked for every file, and sha256 for files up to 64 MB. After that the app goes straight
+  into the game, and the import gate unpacks the tars as usual.
+- **Kill-safe:** each file is cloned to a temporary name and renamed into place.
+  `manifest.json` is removed at the start and placed last. A rerun skips files that are
+  already in place, and returns at once if the pack is already ready.
+- A container goes straight into its game only when its catalogue has exactly one game
+  **and** either `"solo": true` or a bundled `ota/` folder. A normal launcher container that
+  happens to hold one game still shows the library. `S2A_SOLO=0` forces the library.
+- Space on the device: the image is a clone of the bundle's copy. Only the unpacked tar
+  contents (usually a few hundred MB) are new data.
