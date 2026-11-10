@@ -329,7 +329,10 @@ def write_ipa(signed_app, output_ipa, *, zip64=False):
                         if big:
                             entry.file_size = before.st_size
                             if _deflate_pays(path, before.st_size):
-                                entry.compress_level = 1
+                                try:
+                                    entry.compress_level = 1   # Python ≥ 3.13
+                                except AttributeError:
+                                    entry._compresslevel = 1   # 3.12 及更早的属性名
                             else:
                                 entry.compress_type = zipfile.ZIP_STORED
                         with path.open('rb') as source, archive.open(entry, 'w', force_zip64=zip64 and before.st_size > 0x7FFF0000) as target:
