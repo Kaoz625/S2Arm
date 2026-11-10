@@ -15,10 +15,11 @@
   ship_ext.py build --shell <壳目录> --root <产物根> --out <新 App 路径> --bundle-id <包名> [--suffix <显示名后缀>] --icon <图标> [--set K=V …]
   ship_ext.py container-drop --base <已有容器 App> --game <游戏号> --out <新 App 路径>   从容器摘掉一款（其余各款逐字节不变，不换壳）
   ship_ext.py container --shell <壳目录> --out <新 App 路径> [--base <已有容器 App>] --game <产物根> [--game …] --bundle-id <包名> --icon <图标>
-              [--display-name S2Arm] [--sign none|adhoc|dev] [--team <团队>]
+              [--display-name S2Arm] [--sign none|adhoc|dev] [--team <团队>] [--solo]
          多款容器（布局见「多款容器」段）：每款随行表进 Games/<游戏号>/、镜像包写成 Frameworks/S2AImages-<游戏号>.dylib，生成 s2a_catalogue.json，
          整包统一签名；--base 给已有容器 = 加一款 / 换一款，其余各款原样带过来。地址窗口需求不在组装期算（宿主构造期对包内各款自己算、取最大，runtime/src/vawin.c），
-         组装期只核各款 NPDM 地址空间类型一致（与宿主同一判据），全程纯 Python、Windows / Mac 同一份
+         组装期只核各款 NPDM 地址空间类型一致（与宿主同一判据），全程纯 Python、Windows / Mac 同一份。
+         --solo：只装一款时清单标 "solo": true，宿主打开直接进这款、不出游戏库（单款游戏 App，tools/single_game_app.py 用）
 退出码：0 成功；1 失败（报红一行）；2 用法错
 """
 import argparse
@@ -400,7 +401,12 @@ def cmd_container(a):
                     red(f"{gid} 存档游戏身份校验失败：{(c.stderr or c.stdout).strip()[-200:]}")
             (gd / CTX).write_text(ctx_text(gid), encoding="utf-8", newline="\n")
         apply_custom(app, games, a.custom, GAMES)
-        (app / CATALOGUE).write_text(json.dumps(dict(schema=1, shell_id=sid, games=games), ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")
+        cat = dict(schema=1, shell_id=sid, games=games)
+        if getattr(a, "solo", False):   # 单款游戏 App（tools/single_game_app.py）：宿主打开就进这一款、不出游戏库（ios/app.m solo_game_id）
+            if len(games) != 1:
+                red(f"--solo 只给只装一款的容器（这次 {len(games)} 款）")
+            cat["solo"] = True
+        (app / CATALOGUE).write_text(json.dumps(cat, ensure_ascii=False, indent=1) + "\n", encoding="utf-8", newline="\n")
         sign_app(app, a.sign, a.bundle_id, a.team)
         os.replace(app, out)
     finally:
@@ -444,6 +450,7 @@ def main():
     c.add_argument("--game", action="append", default=[]); c.add_argument("--bundle-id", required=True); c.add_argument("--icon", required=True)
     c.add_argument("--banner", action="append", default=[], help="游戏号=横图路径（游戏库那份；组装不联网）")
     c.add_argument("--host-abi", type=int, required=True)    # 宿主读产物约定号（pack/jobs/host_update.py HOST_ABI），写进每款条目
+    c.add_argument("--solo", action="store_true", help="单款游戏 App：清单标 solo，打开直接进这款（只许一款）")
     c.add_argument("--display-name", default=PLACEHOLDER_NAME); c.add_argument("--sign", choices=("none", "adhoc", "dev"), default="none"); c.add_argument("--team", default="")
     d = sub.add_parser("container-drop"); d.add_argument("--base", required=True); d.add_argument("--game", required=True); d.add_argument("--out", required=True)
     a = ap.parse_args()

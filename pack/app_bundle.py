@@ -281,19 +281,37 @@ def _zip32_budget(entries):
     return count, total, biggest
 
 
-def write_ipa(signed_app, output_ipa):
-    """Archive only: never mutate signed bytes. Permissions derive from bundle metadata."""
+BIG = 64 * 1024 * 1024   # zip64 模式下这么大以上的文件先抽样试压：压不下去（游戏镜像多半已压缩）就原样存，省掉几十 GB 的无用 deflate
+
+
+def _deflate_pays(path, size, samples=8, chunk=4 * 1024 * 1024, ratio=0.97):
+    """大文件抽 samples 段、每段 chunk 字节，zlib 1 级试压；整体能压到 ratio 以下才值得 deflate"""
+    import zlib
+    raw = packed = 0
+    with path.open('rb') as f:
+        for i in range(samples):
+            f.seek(size * i // samples)
+            b = f.read(chunk)
+            raw += len(b)
+            packed += len(zlib.compress(b, 1))
+    return raw > 0 and packed < raw * ratio
+
+
+def write_ipa(signed_app, output_ipa, *, zip64=False):
+    """Archive only: never mutate signed bytes. Permissions derive from bundle metadata.
+    zip64=True：单款游戏 App 包里带着整份资源包（6–30 GB，tools/single_game_app.py），超过 zip 32 位上限只能 zip64（iOS 安装与 Xcode 导出的大 IPA 同格式）；
+      大文件抽样试压、压不下去就原样存（ZIP_STORED），能压的用 1 级 deflate。缺省 False 保持原样：不写 zip64（侧载工具 AltServer for Windows 不认，见下）"""
     app, entries = _tree(signed_app)
     executable = _executable_paths(app, entries)
     count, total, (biggest, biggest_size) = _zip32_budget(entries)
-    if count > ZIP32_ENTRIES:
+    if count > ZIP32_ENTRIES and not zip64:
         raise BundleError(f'App 有 {count} 个条目，超过非 zip64 归档的 {ZIP32_ENTRIES} 个上限（侧载工具读不了 zip64）')
     dest = _destination(output_ipa, app)
     fd, name = tempfile.mkstemp(prefix='.ipa-', dir=dest.parent)
     temp = Path(name)
     try:
         try:
-            with os.fdopen(fd, 'w+b') as stream, zipfile.ZipFile(stream, 'w', allowZip64=False) as archive:
+            with os.fdopen(fd, 'w+b') as stream, zipfile.ZipFile(stream, 'w', allowZip64=zip64) as archive:
                 prefix = 'Payload/S2Arm.app/'
                 archive.writestr(_zip_entry('Payload/', True), b'')
                 archive.writestr(_zip_entry(prefix, True), b'')
@@ -305,10 +323,17 @@ def write_ipa(signed_app, output_ipa):
                         before = _plain(path)
                         # 不写 zip64（11-04 S0-5）：AltServer for Windows 1.8.1 自带 minizip 1.01e 不认 zip64，强制 zip64 时本地头写占位大小、与中央目录不一致，
                         #   打开条目即 UNZ_BADZIPFILE，侧载报「An unknown error occured while reading the file」。单个文件到 zip 32 位上限就报红，不静默改写格式
-                        if before.st_size > ZIP32_MAX:
+                        if before.st_size > ZIP32_MAX and not zip64:
                             raise BundleError(f'单个文件超过 zip 32 位上限、侧载工具读不了：{rel}（{before.st_size} 字节）')
-                        with path.open('rb') as source, archive.open(entry, 'w', force_zip64=False) as target:
-                            shutil.copyfileobj(source, target, length=1024 * 1024)
+                        big = zip64 and before.st_size >= BIG
+                        if big:
+                            entry.file_size = before.st_size
+                            if _deflate_pays(path, before.st_size):
+                                entry.compress_level = 1
+                            else:
+                                entry.compress_type = zipfile.ZIP_STORED
+                        with path.open('rb') as source, archive.open(entry, 'w', force_zip64=zip64 and before.st_size > 0x7FFF0000) as target:
+                            shutil.copyfileobj(source, target, length=(16 if big else 1) * 1024 * 1024)
                         after = _plain(path)
                         if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
                             raise BundleError(f'归档期间文件变了：{rel}')
