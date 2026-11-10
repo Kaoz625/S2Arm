@@ -10,6 +10,7 @@
 #import <CommonCrypto/CommonDigest.h>
 #import "notice.h"
 #import "ota_download.h"
+#import "ota_place.h"   // 落点 / 核对 ota.json / sha256：与随包资源包共用
 #import "s2a_l10n.h"
 #include "native.h"
 #include "s2a_docs.h"
@@ -30,23 +31,9 @@ static NSURL *support_dir(void) {   // Library/Application Support/S2ArmOTA：�
 static NSString *proc_docs(void) { char d[1024]; s2a_container_docs(d, sizeof d); return @(d); }
 static NSString *game_docs(NSString *gid) { return [[proc_docs() stringByAppendingPathComponent:@"games"] stringByAppendingPathComponent:gid]; }
 static BOOL valid_gid(NSString *g) { return [g isKindOfClass:NSString.class] && [g rangeOfString:@"^[0-9A-Fa-f]{16}$" options:NSRegularExpressionSearch].location != NSNotFound; }
-static BOOL safe_rel(id p) {   // 相对路径：非空、不以 / 开头、没有 .. 段、没有反斜杠 / 冒号（挡掉绝对地址）
-    if (![p isKindOfClass:NSString.class] || ![p length] || [p hasPrefix:@"/"] || [p containsString:@"\\"] || [p containsString:@":"]) return NO;
-    for (NSString *c in [p componentsSeparatedByString:@"/"]) if (!c.length || [c isEqualToString:@".."] || [c isEqualToString:@"."]) return NO;
-    return YES;
-}
 static NSString *fmt_bytes(long long b) { return [NSByteCountFormatter stringFromByteCount:b countStyle:NSByteCountFormatterCountStyleFile]; }
 static long long file_size(NSString *p) { NSDictionary *a = [NSFileManager.defaultManager attributesOfItemAtPath:p error:nil]; return a ? (long long)a.fileSize : -1; }
-static NSString *sha256_path(NSString *p) {
-    NSInputStream *in = [NSInputStream inputStreamWithFileAtPath:p]; [in open]; if (in.streamStatus != NSStreamStatusOpen) return nil;
-    CC_SHA256_CTX c; CC_SHA256_Init(&c); NSMutableData *buf = [NSMutableData dataWithLength:4 << 20]; NSInteger n;
-    while ((n = [in read:buf.mutableBytes maxLength:buf.length]) > 0) CC_SHA256_Update(&c, buf.bytes, (CC_LONG)n);
-    [in close]; if (n < 0) return nil;
-    unsigned char md[CC_SHA256_DIGEST_LENGTH]; CC_SHA256_Final(md, &c);
-    NSMutableString *s = [NSMutableString string]; for (int i = 0; i < CC_SHA256_DIGEST_LENGTH; i++) [s appendFormat:@"%02x", md[i]];
-    return s;
-}
-static NSURL *join_url(NSURL *base, NSString *rel) {   // base 以 / 结尾；rel 已过 safe_rel；结果必须同主机（认证头只发给目录给的主机）
+static NSURL *join_url(NSURL *base, NSString *rel) {   // base 以 / 结尾；rel 已过 s2a_ota_check 的安全相对路径核对；结果必须同主机（认证头只发给目录给的主机）
     NSString *enc = [rel stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLPathAllowedCharacterSet];
     NSURL *u = [NSURL URLWithString:enc relativeToURL:base].absoluteURL;
     return u && [u.scheme isEqualToString:@"https"] && [u.host isEqualToString:base.host] ? u : nil;
@@ -178,7 +165,6 @@ static NSString *part_dir(void) { return [game_docs(g_job[@"gid"]) stringByAppen
 static NSString *part_path(NSUInteger i) { return [part_dir() stringByAppendingPathComponent:[NSString stringWithFormat:@"%lu.part", (unsigned long)i]]; }
 static NSString *const kPackDir = @"资源包";   // 设备侧资源包目录名（推送契约 / pack_apply.c 同名），不是显示文字
 static NSString *pack_root(void) { return [game_docs(g_job[@"gid"]) stringByAppendingPathComponent:kPackDir]; }
-static NSString *dest_path(NSDictionary *f) { return [pack_root() stringByAppendingPathComponent:f[@"dest"]]; }
 static void ensure_session(void) {
     if (g_bg) return;
     g_q = [NSOperationQueue new]; g_q.maxConcurrentOperationCount = 1; g_q.name = @"s2a.ota";
@@ -230,8 +216,8 @@ static void job_finish(void) {   // g_q 上：全部落地（manifest.json 最�
 }
 // 当前文件 .part 已够长：核 sha256 → 改名到落点 → 下一个
 static void job_land(NSUInteger i) {
-    NSDictionary *f = job_files()[i]; NSString *pp = part_path(i), *dst = dest_path(f); NSFileManager *fm = NSFileManager.defaultManager;
-    NSString *got = sha256_path(pp);
+    NSDictionary *f = job_files()[i]; NSString *pp = part_path(i); NSFileManager *fm = NSFileManager.defaultManager;
+    NSString *got = s2a_ota_sha256(pp);
     if (![got isEqualToString:[f[@"sha256"] lowercaseString]]) {
         [fm removeItemAtPath:pp error:nil];
         LOG("【红】OTA：%s sha256 不对（%s），删掉重下", [f[@"name"] UTF8String], got.UTF8String ?: "读不了");
@@ -240,13 +226,9 @@ static void job_land(NSUInteger i) {
     }
     // 直写镜像（不是 tar、不是清单）落地前把 .applied 清空：同 push_pack.send，镜像写到一半时库里不能判成就绪（pack_apply.c s2a_game_on_device）
     NSString *d = f[@"dest"], *root = pack_root();
-    if (![d hasPrefix:@".incoming/"] && ![d isEqualToString:@"index.tsv"] && ![d isEqualToString:@"manifest.json"] && ![g_job[@"cleared"] boolValue]) {
-        NSString *ap = [root stringByAppendingPathComponent:@".applied"]; if ([fm fileExistsAtPath:ap]) [[NSData data] writeToFile:ap atomically:YES];
-        g_job[@"cleared"] = @YES;
-    }
-    NSError *e = nil; [fm createDirectoryAtPath:dst.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil];
-    [fm removeItemAtPath:dst error:nil];
-    if (![fm moveItemAtPath:pp toPath:dst error:&e]) { job_fail([NSString stringWithFormat:@"moving to %@ failed: %@", d, e.localizedDescription]); return; }
+    if (s2a_ota_is_direct(d) && ![g_job[@"cleared"] boolValue]) { s2a_ota_clear_applied(root); g_job[@"cleared"] = @YES; }
+    NSString *why = s2a_ota_place_file(pp, root, d, [f[@"size"] longLongValue], NO, nil, NULL);   // 同卷改名（ota_place.m，与随包资源包同一条落点）
+    if (why) { job_fail([NSString stringWithFormat:@"placing %@ failed: %@", d, why]); return; }
     g_job[@"next"] = @(i + 1); g_tries = 0; job_save();
     LOG("OTA：落地 %s（%lld 字节，%lu/%lu）", d.UTF8String, [f[@"size"] longLongValue], (unsigned long)i + 1, (unsigned long)job_files().count);
     job_step();
@@ -318,24 +300,11 @@ static void job_step(void) {   // g_q 上：下一个文件 / 下一段
 @end
 
 // ---- 开始 / 接着 ----
-static NSString *check_ota(NSDictionary *o, NSString *gid) {   // 不对返回原因
-    if (![o[@"format"] isEqual:@"s2arm-ota"] || ![o[@"version"] isEqual:@1]) return @"not s2arm-ota v1";
-    if (![[o[@"title_id"] description].uppercaseString isEqualToString:gid]) return @"title id mismatch";
-    NSArray *fs = o[@"files"]; if (![fs isKindOfClass:NSArray.class] || fs.count < 2) return @"no files";
-    for (NSDictionary *f in fs) {
-        if (![f isKindOfClass:NSDictionary.class] || !safe_rel(f[@"name"]) || !safe_rel(f[@"dest"]) || ![f[@"size"] isKindOfClass:NSNumber.class] || [f[@"size"] longLongValue] < 0) return @"bad file entry";
-        if (![f[@"sha256"] isKindOfClass:NSString.class] || [f[@"sha256"] rangeOfString:@"^[0-9a-fA-F]{64}$" options:NSRegularExpressionSearch].location == NSNotFound) return @"bad sha256";
-        NSString *d = f[@"dest"]; if ([d hasPrefix:@".incoming/"] && (![d hasSuffix:@".tar"] || [d substringFromIndex:10].pathComponents.count != 1)) return @"bad tar dest";
-        if ([d hasPrefix:@"."] && ![d hasPrefix:@".incoming/"]) return @"dest is a bookkeeping file";
-    }
-    if (![[fs[fs.count - 2] objectForKey:@"dest"] isEqual:@"index.tsv"] || ![[fs.lastObject objectForKey:@"dest"] isEqual:@"manifest.json"]) return @"index.tsv / manifest.json not last";
-    return nil;
-}
 static void start_with(NSString *gid, NSDictionary *entry) {   // 主线程：取 ota.json → 核 → 核空间 → 开下
     page_show(@"arrow.down.circle.fill", S2AL(@"ota.title.preparing"), S2AL(@"ota.body.preparing"), -1, nil, @[btn(S2AL(@"ota.button.close"), NO, ^{ page_hide(); })]);
     NSURL *base = entry[@"base"]; NSDictionary *hd = entry[@"headers"];
     get_json(join_url(base, @"ota.json") ?: base, hd, ^(NSDictionary *o, NSString *why) {
-        NSString *bad = o ? check_ota(o, gid) : why;
+        NSString *bad = o ? s2a_ota_check(o, gid) : why;
         if (bad) { LOG("【红】OTA：%s 的 ota.json 不能用：%s", gid.UTF8String, bad.UTF8String);
             page_show(@"exclamationmark.triangle.fill", S2AL(@"ota.title.failed"), S2AL(@"ota.body.failed"), -1, nil, @[btn(S2AL(@"ota.button.retry"), YES, ^{ s2a_ota_start(gid); }), btn(S2AL(@"ota.button.close"), NO, ^{ page_hide(); })]); return; }
         ensure_session();
@@ -417,4 +386,45 @@ void s2a_ota_library_appeared(void) {
         [g_bg getTasksWithCompletionHandler:^(NSArray *d, NSArray *u, NSArray *dl) { (void)d; (void)u;
             [g_q addOperationWithBlock:^{ if (dl.count && g_job) { g_running = YES; s2a_ios_keep_awake(1); LOG("OTA：接上后台在下的 %s", [g_job[@"gid"] UTF8String]); ui_progress(YES); } }]; }];
     }];
+}
+
+// ---- 随包资源包（单款游戏 App：包里 Games/<游戏号>/ota/ 带着 tools/ota_pack.py export 的原样输出）----
+//   首次打开时把它按下载同一套落点放进 Documents/games/<游戏号>/资源包（ota_place.m：同卷 APFS 克隆，几乎不占空间、几秒放完），之后照常由导入闸门解开。
+//   可重入：放到一半被杀，下次打开再放（已放好的跳过）
+BOOL s2a_ota_bundled_available(NSString *gid) { return s2a_ota_bundled_dir(NSBundle.mainBundle.bundlePath, gid) != nil; }
+void s2a_ota_bundled_install(NSString *gid, void (^done)(BOOL ok)) {
+    gid = gid.uppercaseString; NSString *dir = s2a_ota_bundled_dir(NSBundle.mainBundle.bundlePath, gid);
+    if (!dir) { done(NO); return; }
+    NSString *gd = game_docs(gid), *docs = proc_docs();
+    LOG("OTA 随包：%s 的资源包在包里（%s），放进 %s", gid.UTF8String, dir.UTF8String, gd.UTF8String);
+    page_show(@"shippingbox.fill", S2AL(@"ota.title.bundled"), S2AL(@"ota.body.bundled"), 0, nil, @[]);
+    s2a_ios_keep_awake(1);
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        __block CFAbsoluteTime last = 0; BOOL cloned = YES; CFAbsoluteTime t0 = CFAbsoluteTimeGetCurrent();
+        NSString *why = s2a_ota_place_bundled(dir, gd, gid, ^long long {
+            NSNumber *f = nil; [[NSURL fileURLWithPath:docs] getResourceValue:&f forKey:NSURLVolumeAvailableCapacityForImportantUsageKey error:nil]; return f ? f.longLongValue : -1;
+        }, ^(long long d, long long t, NSUInteger i, NSUInteger n) {
+            CFAbsoluteTime now = CFAbsoluteTimeGetCurrent(); if (now - last < 0.25 && i < n) return; last = now;
+            NSString *cap = [NSString stringWithFormat:S2AL(@"ota.caption"), fmt_bytes(d), fmt_bytes(t), (int)MIN(i + 1, n), (int)n];
+            float p = t > 0 ? (float)((double)d / (double)t) : 1;
+            dispatch_async(dispatch_get_main_queue(), ^{ page_show(@"shippingbox.fill", S2AL(@"ota.title.bundled"), S2AL(@"ota.body.bundled"), p, cap, @[]); });
+        }, &cloned);
+        double secs = CFAbsoluteTimeGetCurrent() - t0;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            s2a_ios_keep_awake(0);
+            if (!why) {
+                LOG("OTA 随包：%s 放好（%.1f 秒，%s），交给导入闸门", gid.UTF8String, secs, cloned ? "全程 APFS 克隆" : "有文件是真拷贝");
+                UIViewController *p = g_page.presentingViewController; g_page = nil;
+                if (p) [p dismissViewControllerAnimated:NO completion:^{ done(YES); }]; else done(YES);
+                return;
+            }
+            LOG("【红】OTA 随包：%s 放不进去：%s", gid.UTF8String, why.UTF8String);
+            BOOL nospace = [why hasPrefix:@"nospace"];
+            page_show(nospace ? @"externaldrive.fill.badge.exclamationmark" : @"exclamationmark.triangle.fill",
+                      nospace ? S2AL(@"ota.title.nospace") : S2AL(@"ota.title.bundled.failed"), nospace ? S2AL(@"ota.body.bundled.nospace") : S2AL(@"ota.body.bundled.failed"), -1, nil, @[
+                btn(S2AL(@"ota.button.retry"), YES, ^{ s2a_ota_bundled_install(gid, done); }),
+                btn(S2AL(@"ota.button.close"), NO, ^{ UIViewController *p = g_page.presentingViewController; g_page = nil;
+                    if (p) [p dismissViewControllerAnimated:NO completion:^{ done(NO); }]; else done(NO); })]);
+        });
+    });
 }

@@ -570,6 +570,8 @@ int s2a_ios_screen_h(void) { double r = screen_ratio(); return r * 9 < 16 ? ((in
 @property BOOL cloudSynced;                         // 本进程已跑过起局前的 iCloud 存档同步
 @property BOOL cloudSyncing;                        // 同步页正盖着：期间切走再回来不起宿主（11-09 审查：曾在同步页底下直接起局）
 @property(strong) UIViewController *previousRoot;   // 同步页盖住之前的根（游戏界面），同步完换回
+@property(copy) NSString *soloGid;                  // 单款游戏 App（容器只装一款、标了 solo 或带随包资源包）：这款的游戏号，不出游戏库直接进
+@property BOOL soloBegun;
 @end
 // 亮度保持（10-30 维护者）：只在起局设一次留不住——测试设备开着自动亮度，0.5 设下去随后被系统拉回 0.20–0.33（10-30 暗黑3 测试设备2 一局），
 //   那局整机瓦数就不是 0.5 口径。设了 S2A_BRIGHTNESS 时每 2 秒、以及亮度变化通知时重设回目标；整局实际亮度的最小 / 最大值在每次检查时
@@ -670,6 +672,19 @@ void s2a_shell_pick_game_data(const char *gid) {   // 主线程（s2a_shell.h �
     if (!gid || !*gid) return;
     library_pack_help(@(gid), NO);
 }
+// 单款游戏 App（一个游戏一个 App，tools/single_game_app.py 出）：容器清单里恰好一款，且清单标了 "solo": true 或这款带随包资源包（Games/<游戏号>/ota/）
+//   → 不出游戏库，打开就进这款（资源包不在就先把随包的放进去，ota_download.m s2a_ota_bundled_install）。启动器出的普通容器只有一款时照旧出游戏库（还要在库里加款）
+static NSString *solo_game_id(void) {
+    NSString *b = @(s2a_launch_ctx_bundle_dir());
+    NSData *d = [NSData dataWithContentsOfFile:[b stringByAppendingPathComponent:@"s2a_catalogue.json"]];
+    NSDictionary *cat = d ? [NSJSONSerialization JSONObjectWithData:d options:0 error:nil] : nil;
+    NSArray *gs = [cat isKindOfClass:NSDictionary.class] ? cat[@"games"] : nil;
+    if (![gs isKindOfClass:NSArray.class] || gs.count != 1 || ![gs[0] isKindOfClass:NSDictionary.class]) return nil;
+    NSString *gid = gs[0][@"title_id"];
+    if (![gid isKindOfClass:NSString.class] || [gid rangeOfString:@"^[0-9A-F]{16}$" options:NSRegularExpressionSearch].location == NSNotFound) return nil;
+    { const char *e = getenv("S2A_SOLO"); if (e && *e == '0') { LOG("单款游戏 App：S2A_SOLO=0，照旧出游戏库"); return nil; } }
+    return [cat[@"solo"] isEqual:@YES] || s2a_ota_bundled_available(gid) ? gid : nil;
+}
 // 同步页完了（同步成 / 失败玩家点开始 / 冲突先不处理）：换回游戏界面，接着走存档管理 → 起宿主（主线程）
 static void cloud_sync_done(void *ctx) {
     S2ASceneDelegate *sd = (__bridge S2ASceneDelegate *)ctx;
@@ -714,6 +729,12 @@ static void cloud_sync_done(void *ctx) {
     g_brightness = ws.screen.brightness;
     self.window = [[UIWindow alloc] initWithWindowScene:ws];
     { CGSize z = self.window.bounds.size; double a = fmax(z.width, z.height), b = fmin(z.width, z.height); if (b > 0) g_view_ratio = a / b; }   // 当前屏的比例（宽屏装载在等它，见 screen_ratio）
+    if (s2a_launch_ctx_container() && !atomic_load(&g_game_picked) && (self.soloGid = solo_game_id())) {   // 单款游戏 App：黑底占位，场景激活时直接进这款（soloStart）
+        UIViewController *vc = [UIViewController new]; vc.view.backgroundColor = UIColor.blackColor; self.window.rootViewController = vc; g_lib_window = self.window;
+        { const char *e = getenv("S2A_NO_KEY_WINDOW"); if (e && !strcmp(e, "0")) [self.window makeKeyAndVisible]; else self.window.hidden = NO; }
+        LOG("iOS 壳：窗口已建 %.0fx%.0f（场景，单款游戏 App %s，激活后直接进游戏）", self.window.bounds.size.width, self.window.bounds.size.height, self.soloGid.UTF8String);
+        return;
+    }
     if (s2a_launch_ctx_container() && !atomic_load(&g_game_picked)) {   // 多款容器：先出游戏库，不建游戏界面、不挂加载页
         [self showLibrary];
         { const char *e = getenv("S2A_NO_KEY_WINDOW"); if (e && !strcmp(e, "0")) [self.window makeKeyAndVisible]; else self.window.hidden = NO; }
@@ -759,8 +780,22 @@ static void cloud_sync_done(void *ctx) {
     (void)windowScene; UIViewController *top = self.window.rootViewController; while (top.presentedViewController) top = top.presentedViewController;
     home_shortcut(item.type, NO, top); done(YES);
 }
+// 单款游戏 App 第一次激活：资源包已就绪 / 已到待解开 → 直接 Play；不在但包里带着 → 先放进去再 Play；都不是 → 退回游戏库（说明 / 下载）
+- (void)soloStart {
+    NSString *gid = self.soloGid;
+    if (s2a_shell_game_data_ready(gid.UTF8String)) { LOG("单款游戏 App：%s 资源包已在，直接进游戏", gid.UTF8String); library_play(gid.UTF8String, (__bridge void *)self); return; }
+    if (!s2a_ota_bundled_available(gid)) { LOG("单款游戏 App：%s 资源包不在、包里也没带，出游戏库", gid.UTF8String); self.soloGid = nil; [self showLibrary]; return; }
+    __weak S2ASceneDelegate *w = self;
+    s2a_ota_bundled_install(gid, ^(BOOL ok) {
+        S2ASceneDelegate *sd = w; if (!sd) return;
+        if (ok && s2a_shell_game_data_ready(gid.UTF8String)) { library_play(gid.UTF8String, (__bridge void *)sd); return; }
+        LOG("【红】单款游戏 App：%s 随包资源包没放成（%s），出游戏库", gid.UTF8String, ok ? "放完库仍判不在" : "失败或玩家关掉");
+        sd.soloGid = nil; [sd showLibrary];
+    });
+}
 - (void)sceneDidBecomeActive:(UIScene *)scene {
     (void)scene;
+    if (self.soloGid && !self.soloBegun && !atomic_load(&g_game_picked)) { self.soloBegun = YES; [self soloStart]; return; }
     if (!s2a_host_boot_pending()) return;
     if (s2a_launch_ctx_container() && !atomic_load(&g_game_picked)) return;   // 多款容器：等游戏库 Play（预热进程同样只显示库）
     if (self.managingSaves || self.cloudSyncing) return;

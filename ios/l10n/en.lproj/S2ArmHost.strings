@@ -249,3 +249,8 @@
 "ota.body.pick" = "Choose a game from the download catalog.";
 "ota.body.pick.none" = "Every game in the download catalog is already on this device.";
 "ota.body.catalog" = "Couldn’t read the download catalog. Check the link (it must start with https://) and the connection.";
+"ota.title.bundled" = "Setting Up the Game";
+"ota.body.bundled" = "Moving the game data that came with this app into place. This only happens the first time and takes a few seconds.";
+"ota.title.bundled.failed" = "Couldn’t Set Up the Game";
+"ota.body.bundled.failed" = "The game data inside this app couldn’t be moved into place. Try again; if it keeps failing, reinstall the app.";
+"ota.body.bundled.nospace" = "There isn’t enough free storage to set up this game. Free up space and try again.";

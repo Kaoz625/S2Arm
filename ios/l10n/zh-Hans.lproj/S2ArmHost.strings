@@ -249,3 +249,8 @@
 "ota.body.pick" = "从下载目录里选一款。";
 "ota.body.pick.none" = "下载目录里的游戏都已经在这台设备上了。";
 "ota.body.catalog" = "读不到下载目录。检查链接（要以 https:// 开头）和网络。";
+"ota.title.bundled" = "正在准备游戏";
+"ota.body.bundled" = "正在把 App 里自带的游戏资源放到位，只在第一次打开时做，几秒就好。";
+"ota.title.bundled.failed" = "游戏没能准备好";
+"ota.body.bundled.failed" = "App 里自带的游戏资源没能放到位。请再试一次；一直不行就重新安装这个 App。";
+"ota.body.bundled.nospace" = "剩余空间不够，准备不了这款游戏。请清理出空间后再试。";
