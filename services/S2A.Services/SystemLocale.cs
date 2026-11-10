@@ -63,17 +63,26 @@ namespace S2A.Services
             return SystemLanguage.AmericanEnglish;
         }
 
-        // 游戏不支持系统语言时依次试的语言（交 Ryujinx GetDesiredLanguage，S2AHooks.TitleLanguageFallback）：系统首选语言列表依次 → 简中 → 繁中 → 美式 / 英式英语；
-        //   都不支持才轮到游戏自己的首选（11-03 归族：GB4 / FFR / JUMP FORCE 亚洲版只收韩 / 繁 / 简，上游取「游戏支持的第一个」= 韩语，玩家看到韩文界面）
+        // 游戏不支持系统语言时依次试的语言（交 Ryujinx GetDesiredLanguage，S2AHooks.TitleLanguageFallback）：系统首选语言列表依次 → 英语（美式 / 英式）→ 简中 → 繁中；
+        //   首选里第一个认得的是中文时中文在英语前（简中 → 繁中 → 英语）。都不支持才轮到游戏自己的首选（11-03 归族：GB4 / FFR / JUMP FORCE 亚洲版只收韩 / 繁 / 简，
+        //   上游取「游戏支持的第一个」= 韩语，玩家看到韩文界面）。11-10 维护者（英文设备上看到中文）：原先中文固定排在英语前，英文设备遇到不收美式英语的游戏
+        //   （只收英式）会先落到简中；现在英文 / 其他语言设备一律先英语，只有中文设备才先中文
         public static TitleLanguage[] TitleFallback(string[] tags)
         {
             var r = new System.Collections.Generic.List<TitleLanguage>();
             void Add(TitleLanguage t) { if (!r.Contains(t)) r.Add(t); }
+            bool zhFirst = false, seen = false;
             foreach (string tag in tags)
             {
-                if (Map(tag) is SystemLanguage l && Enum.TryParse(l.ToString(), out TitleLanguage t)) Add(t);
+                if (Map(tag) is SystemLanguage l && Enum.TryParse(l.ToString(), out TitleLanguage t))
+                {
+                    if (!seen) { zhFirst = l == SystemLanguage.SimplifiedChinese || l == SystemLanguage.TraditionalChinese; seen = true; }
+                    Add(t);
+                }
             }
-            Add(TitleLanguage.SimplifiedChinese); Add(TitleLanguage.TraditionalChinese); Add(TitleLanguage.AmericanEnglish); Add(TitleLanguage.BritishEnglish);
+            if (zhFirst) { Add(TitleLanguage.SimplifiedChinese); Add(TitleLanguage.TraditionalChinese); }
+            Add(TitleLanguage.AmericanEnglish); Add(TitleLanguage.BritishEnglish);
+            Add(TitleLanguage.SimplifiedChinese); Add(TitleLanguage.TraditionalChinese);
             return r.ToArray();
         }
 

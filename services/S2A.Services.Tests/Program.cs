@@ -2872,7 +2872,11 @@ namespace S2A.Services.Tests
                 // 游戏不支持系统语言时的退路（11-03 GB4 / FFR / JUMP FORCE 亚洲版只收韩 / 繁 / 简，上游取第一个 = 韩语）：系统首选依次 → 简中 → 繁中 → 英语，都不支持才取游戏首选
                 var TL = typeof(Ryujinx.HLE.HOS.SystemState.TitleLanguage);
                 string fb = string.Join(",", SystemLocale.TitleFallback(new[] { "en-US", "ja-JP", "xx-YY" }));
-                Check("语言退路列表：en-US, ja-JP, 认不出的 → 首选依次 + 简中 / 繁中 / 英式英语（去重）", "AmericanEnglish,Japanese,SimplifiedChinese,TraditionalChinese,BritishEnglish", fb);
+                Check("语言退路列表：en-US, ja-JP, 认不出的 → 首选依次 + 英式英语 + 简中 / 繁中（去重；11-10 英文设备先英语）", "AmericanEnglish,Japanese,BritishEnglish,SimplifiedChinese,TraditionalChinese", fb);
+                Check("语言退路列表：取不到首选 → 英语在前；首选第一个是中文（zh-Hant-HK, en-US）→ 中文在英语前", "AmericanEnglish,BritishEnglish,SimplifiedChinese,TraditionalChinese / TraditionalChinese,AmericanEnglish,SimplifiedChinese,BritishEnglish",
+                    $"{string.Join(",", SystemLocale.TitleFallback(Array.Empty<string>()))} / {string.Join(",", SystemLocale.TitleFallback(new[] { "zh-Hant-HK", "en-US" }))}");
+                Check("语言退路：只收英式英语 + 简中的游戏、首选 en-US → 英式英语（原先先落到简中）", "BritishEnglish",
+                    Enum.GetName(TL, Ryujinx.HLE.HOS.Services.Am.AppletOE.ApplicationProxyService.ApplicationProxy.IApplicationFunctions.PickFallbackLanguage((1 << 1) | (1 << 14), SystemLocale.TitleFallback(new[] { "en-US" }))));
                 int asia = (1 << 12) | (1 << 13) | (1 << 14), jpKo = (1 << 2) | (1 << 12), deOnly = 1 << 4;   // 韩 / 繁 / 简；日 / 韩；只有德语
                 var pick = Ryujinx.HLE.HOS.Services.Am.AppletOE.ApplicationProxyService.ApplicationProxy.IApplicationFunctions.PickFallbackLanguage;
                 var list = SystemLocale.TitleFallback(new[] { "en-US" });
