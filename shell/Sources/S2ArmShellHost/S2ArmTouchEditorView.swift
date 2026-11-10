@@ -57,7 +57,7 @@ struct S2ArmTouchEditorView: View {
     /// 摇杆是浮动的（左 / 右半屏任意处按下），这里只画石墨圈示意大致的拇指位，不能拖
     private var sticks: some View {
         let r = min(area.width, area.height) * 60 / 419   // 游戏内半径 60 点（短边 419 时）
-        return ForEach([(0.075, 0.69, "左摇杆：左半屏任意处按下"), (0.70, 0.81, "右摇杆：右半屏任意处按下")], id: \.2) { x, y, text in
+        return ForEach([(0.075, 0.69, L("Left stick: press anywhere on the left half", "左摇杆：左半屏任意处按下")), (0.70, 0.81, L("Right stick: press anywhere on the right half", "右摇杆：右半屏任意处按下"))], id: \.2) { x, y, text in
             VStack(spacing: 6) {
                 ZStack {
                     Circle().fill(Color(red: 20 / 255, green: 22 / 255, blue: 26 / 255).opacity(0.32)).frame(width: 2 * r, height: 2 * r)
@@ -139,7 +139,7 @@ struct S2ArmTouchEditorView: View {
         area = CGRect(x: l, y: i.top, width: max(1, full.width - l - r), height: max(1, full.height - i.top - b))
         guard full.width >= full.height else { keys = []; return }
         guard let p = gameID.withCString({ s2a_shell_vpad_layout_json($0, Double(area.width), Double(area.height)) }) else {
-            problem = "读不到这款游戏的按键布局"; keys = []; return
+            problem = L("Couldn’t read this game’s button layout", "读不到这款游戏的按键布局"); keys = []; return
         }
         defer { free(p) }
         let obj = try? JSONSerialization.jsonObject(with: Data(String(cString: p).utf8)) as? [String: Any]
@@ -156,9 +156,9 @@ struct S2ArmTouchEditorView: View {
     private func save() {
         var centers: [String: [Double]] = [:]
         for k in keys { centers[k.id] = [Double(k.center.x - area.minX), Double(k.center.y - area.minY)] }   // 区域坐标（原点左上）
-        guard let data = try? JSONSerialization.data(withJSONObject: centers), let json = String(data: data, encoding: .utf8) else { problem = "按键位置没保存"; return }
+        guard let data = try? JSONSerialization.data(withJSONObject: centers), let json = String(data: data, encoding: .utf8) else { problem = L("Button positions weren’t saved", "按键位置没保存"); return }
         let ok = gameID.withCString { g in json.withCString { s2a_shell_vpad_save(g, $0, Double(area.width), Double(area.height)) } }
-        if ok == 1 { close() } else { problem = "按键位置没保存，请再试一次" }
+        if ok == 1 { close() } else { problem = L("Button positions weren’t saved. Please try again.", "按键位置没保存，请再试一次") }
     }
 }
 #endif

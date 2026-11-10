@@ -15,7 +15,7 @@ import ShellUI
     #expect(c.tiles[1].state == .needsGameData)
     #expect(c.tiles[2].state == .needsAppUpdate)
     #expect(c.tiles[3].state == .broken(reason: "R", detail: "D"))
-    #expect(c.tiles[4].state == .broken(reason: "", detail: "", technical: "未知状态 \"flying\""))
+    #expect(c.tiles[4].state == .broken(reason: "", detail: "", technical: L("Unknown state \"flying\"", "未知状态 \"flying\"")))
     if case .broken = c.tiles[5].state {} else { Issue.record("非法 title_id 应显示为不可用") }
     #expect(c.tiles[6].state == .playable)   // 缺 state 按可运行
     #expect(c.problems.count == 2)           // 重复 1 + 非法 id 1

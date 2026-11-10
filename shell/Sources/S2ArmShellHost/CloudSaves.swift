@@ -52,11 +52,11 @@ enum CloudSaves {
     static func call(_ context: [String: Any], _ op: [String: Any]) throws -> [String: Any] {
         let request = context.merging(op) { _, new in new }
         let json = String(decoding: try JSONSerialization.data(withJSONObject: request), as: UTF8.self)
-        guard let raw = json.withCString({ s2a_shell_save_request($0) }) else { throw ServiceError(message: "这个安装包没有存档服务，iCloud 存档没同步。") }
+        guard let raw = json.withCString({ s2a_shell_save_request($0) }) else { throw ServiceError(message: L("This build has no save service, so iCloud Saves didn’t sync.", "这个安装包没有存档服务，iCloud 存档没同步。")) }
         defer { free(raw) }
         let response = (try? JSONSerialization.jsonObject(with: Data(String(cString: raw).utf8))) as? [String: Any] ?? [:]
         guard response["ok"] as? Bool == true else {
-            throw ServiceError(message: ((response["error"] as? [String: Any])?["message"] as? String) ?? "存档服务没有返回有效结果。")
+            throw ServiceError(message: ((response["error"] as? [String: Any])?["message"] as? String) ?? L("The save service didn’t return a valid result.", "存档服务没有返回有效结果。"))
         }
         return response["result"] as? [String: Any] ?? [:]
     }
@@ -75,14 +75,14 @@ enum CloudSaves {
                                        "archiveSha256": preview["archiveSha256"] ?? "", "targetFingerprint": preview["targetFingerprint"] ?? ""])
                 // 收掉已提交的事务记录，不然下次起局会先进存档管理页。此时存档已经换了：失败要照实说（基线不前进，下次同步内容相同只记基线）
                 do { _ = try call(context, ["operation": "recover"]) }
-                catch { throw ServiceError(message: "存档已经换成云端的进度，但收尾没做完（\(error.localizedDescription)）。下次开始游戏前会先进存档管理页接着处理。") }
+                catch { throw ServiceError(message: L("Your saves were switched to the iCloud progress, but finishing up didn’t complete (\(error.localizedDescription)). Next time you play, the saves screen will open first to finish it.", "存档已经换成云端的进度，但收尾没做完（\(error.localizedDescription)）。下次开始游戏前会先进存档管理页接着处理。")) }
             })
     }
 
     static func files(_ inspect: [String: Any]) throws -> [SaveFile] {
-        guard let list = (inspect["manifest"] as? [String: Any])?["files"] as? [[String: Any]] else { throw ServiceError(message: "存档清单读不全。") }
+        guard let list = (inspect["manifest"] as? [String: Any])?["files"] as? [[String: Any]] else { throw ServiceError(message: L("Couldn’t read the full save list.", "存档清单读不全。")) }
         return try list.map {
-            guard let path = $0["path"] as? String, let sha = $0["sha256"] as? String else { throw ServiceError(message: "存档清单读不全。") }
+            guard let path = $0["path"] as? String, let sha = $0["sha256"] as? String else { throw ServiceError(message: L("Couldn’t read the full save list.", "存档清单读不全。")) }
             return SaveFile(path: path, sha256: sha)
         }
     }
@@ -139,7 +139,7 @@ import UniformTypeIdentifiers
 struct CloudSyncView: View {
     let model: CloudSyncModel
     private static let time: DateFormatter = { let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short; f.doesRelativeDateFormatting = true; return f }()
-    private var localName: String { UIDevice.current.userInterfaceIdiom == .pad ? "这台 iPad" : "这台 iPhone" }
+    private var localName: String { UIDevice.current.userInterfaceIdiom == .pad ? L("This iPad", "这台 iPad") : L("This iPhone", "这台 iPhone") }
 
     var body: some View {
         ZStack {
@@ -148,7 +148,7 @@ struct CloudSyncView: View {
                 HStack(spacing: 10) {
                     Image(systemName: icon).font(.system(size: 15, weight: .semibold)).foregroundStyle(ShellPalette.background)
                         .frame(width: 30, height: 30).background(ShellPalette.cream, in: Circle())
-                    Text("ICLOUD 存档").font(.system(size: 11.5, weight: .bold)).tracking(1.3).foregroundStyle(ShellPalette.muted)
+                    Text(L("ICLOUD SAVES", "ICLOUD 存档")).font(.system(size: 11.5, weight: .bold)).tracking(1.3).foregroundStyle(ShellPalette.muted)
                 }
                 Text(model.game).font(.system(size: 24, weight: .heavy)).tracking(-0.5).foregroundStyle(.white).lineLimit(2)
                 content
@@ -174,37 +174,37 @@ struct CloudSyncView: View {
         case .syncing:
             HStack(spacing: 10) {
                 ProgressView().tint(ShellPalette.cream)
-                Text("正在和 iCloud 核对存档…").font(.system(size: 15, weight: .medium)).foregroundStyle(ShellPalette.muted)
+                Text(L("Checking saves with iCloud…", "正在和 iCloud 核对存档…")).font(.system(size: 15, weight: .medium)).foregroundStyle(ShellPalette.muted)
             }
-            Button("跳过同步，直接开始") { model.skip() }
+            Button(L("Skip Sync and Play", "跳过同步，直接开始")) { model.skip() }
                 .font(.system(size: 14, weight: .semibold)).foregroundStyle(ShellPalette.muted).frame(maxWidth: .infinity)
         case .finished(let text):
             Text(text).font(.system(size: 15, weight: .medium)).foregroundStyle(ShellPalette.ready)
         case .failed(let message):
             VStack(alignment: .leading, spacing: 8) {
-                Text("这次没同步上").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                Text(L("Couldn’t sync this time", "这次没同步上")).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
                 Text(message).font(.system(size: 14)).foregroundStyle(ShellPalette.muted).fixedSize(horizontal: false, vertical: true)
-                Text("本机存档没有改动，可以照常玩。").font(.system(size: 14)).foregroundStyle(ShellPalette.muted)
+                Text(L("Saves on this device weren’t changed, so you can play as usual.", "本机存档没有改动，可以照常玩。")).font(.system(size: 14)).foregroundStyle(ShellPalette.muted)
             }
-            primary("开始游戏") { model.start() }
+            primary(L("Play", "开始游戏")) { model.start() }
         case .choosing(let choices):
             VStack(alignment: .leading, spacing: 6) {
-                Text("两边各有新进度，选一份继续玩").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
-                Text("没选的那份会留作备份，不会丢。").font(.system(size: 14)).foregroundStyle(ShellPalette.muted)
+                Text(L("Both have new progress. Choose one to keep playing", "两边各有新进度，选一份继续玩")).font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                Text(L("The one you don’t choose is kept as a backup, so nothing is lost.", "没选的那份会留作备份，不会丢。")).font(.system(size: 14)).foregroundStyle(ShellPalette.muted)
             }
             VStack(spacing: 10) {
                 ForEach(Array(choices.enumerated()), id: \.offset) { _, c in
                     Button { model.pick?(c) } label: { row(c) }.buttonStyle(.plain)
                 }
             }
-            Button("先不选，直接开始") { model.pick?(nil) }
+            Button(L("Decide Later and Play", "先不选，直接开始")) { model.pick?(nil) }
                 .font(.system(size: 14, weight: .semibold)).foregroundStyle(ShellPalette.muted).frame(maxWidth: .infinity)
         }
     }
 
     private func row(_ c: SaveSyncChoice) -> some View {
         let size = ByteCountFormatter.string(fromByteCount: c.bytes, countStyle: .file)
-        let detail = c.isLocal ? "就在这台设备上 · \(size)" : "保存于 \(c.savedAt.map { Self.time.string(from: $0) } ?? "未知时间") · \(size)"
+        let detail = c.isLocal ? L("On this device · \(size)", "就在这台设备上 · \(size)") : L("Saved \(c.savedAt.map { Self.time.string(from: $0) } ?? "at an unknown time") · \(size)", "保存于 \(c.savedAt.map { Self.time.string(from: $0) } ?? "未知时间") · \(size)")
         return HStack(spacing: 14) {
             Image(systemName: Self.symbol(c.platform))
                 .font(.system(size: 20)).foregroundStyle(ShellPalette.cream).frame(width: 28)
@@ -281,11 +281,11 @@ struct CloudSyncView: View {
 
     static func describe(_ outcome: SaveSyncOutcome) -> String {
         switch outcome {
-        case .upToDate: "存档已是最新"
-        case .uploaded: "已把这台设备的进度存到 iCloud"
-        case .downloaded(let from), .tookRemote(let from): "已换成 \(from) 的进度"
-        case .keptLocal: "已用这台设备的进度，并存到 iCloud"
-        case .conflictSkipped: "这次先不同步，用这台设备的存档开始"
+        case .upToDate: L("Saves are up to date", "存档已是最新")
+        case .uploaded: L("Saved this device’s progress to iCloud", "已把这台设备的进度存到 iCloud")
+        case .downloaded(let from), .tookRemote(let from): L("Switched to progress from \(from)", "已换成 \(from) 的进度")
+        case .keptLocal: L("Kept this device’s progress and saved it to iCloud", "已用这台设备的进度，并存到 iCloud")
+        case .conflictSkipped: L("Not syncing this time; starting with this device’s saves", "这次先不同步，用这台设备的存档开始")
         }
     }
 }

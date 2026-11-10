@@ -94,24 +94,24 @@ struct S2ArmGameIdentityView: View {
         ZStack {
             Color.black.opacity(0.82).ignoresSafeArea().accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 18) {
-                Text("名字和封面").font(.title2.weight(.heavy)).foregroundStyle(.white).accessibilityIdentifier("identity.title")
+                Text(L("Name & Cover", "名字和封面")).font(.title2.weight(.heavy)).foregroundStyle(.white).accessibilityIdentifier("identity.title")
                 TextField(title, text: $name).textFieldStyle(.roundedBorder).accessibilityIdentifier("identity.name")
                 HStack(spacing: 14) {
                     if let preview {
                         Image(uiImage: preview).resizable().scaledToFill().frame(width: 128, height: 72).clipShape(RoundedRectangle(cornerRadius: 8))
                     }
-                    PhotosPicker(selection: $item, matching: .images) { Text("从相册选封面") }
+                    PhotosPicker(selection: $item, matching: .images) { Text(L("Choose Cover from Photos", "从相册选封面")) }
                         .buttonStyle(.bordered).accessibilityIdentifier("identity.cover")
                 }
                 if let error {
-                    Text("没能保存，名字和封面都没改：" + error).font(.footnote).foregroundStyle(.red)
+                    Text(L("Couldn’t save. Name and cover are unchanged: ", "没能保存，名字和封面都没改：") + error).font(.footnote).foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("identity.error")
                 }
                 HStack {
-                    if hasCustom { Button("恢复默认", role: .destructive) { reset() }.accessibilityIdentifier("identity.reset") }
+                    if hasCustom { Button(L("Reset to default", "恢复默认"), role: .destructive) { reset() }.accessibilityIdentifier("identity.reset") }
                     Spacer()
-                    Button("取消") { close() }.accessibilityIdentifier("identity.cancel")
-                    Button("保存") { save(name, cover) }.buttonStyle(.borderedProminent).accessibilityIdentifier("identity.save")
+                    Button(L("Cancel", "取消")) { close() }.accessibilityIdentifier("identity.cancel")
+                    Button(L("Save", "保存")) { save(name, cover) }.buttonStyle(.borderedProminent).accessibilityIdentifier("identity.save")
                 }
             }
             .padding(24).frame(maxWidth: 480)

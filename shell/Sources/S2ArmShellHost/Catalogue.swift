@@ -65,7 +65,7 @@ public struct Catalogue: Equatable, Sendable {
             guard seen.insert(e.titleID).inserted else { problems.append("重复的 title_id \(e.titleID)，后一条丢弃"); continue }
             var state = gameState(e)
             if !isTitleID(e.titleID) {
-                state = .broken(reason: "", detail: "", technical: "title_id \"\(e.titleID)\" 不是 16 位大写十六进制")
+                state = .broken(reason: "", detail: "", technical: L("title_id \"\(e.titleID)\" is not 16 uppercase hex digits", "title_id \"\(e.titleID)\" 不是 16 位大写十六进制"))
                 problems.append("title_id \"\(e.titleID)\" 不合规，按不可用显示")
             }
             if let b = e.banner, !b.isEmpty { banners[e.titleID] = b.hasPrefix("/") ? URL(fileURLWithPath: b) : baseDirectory.appendingPathComponent(b) }
@@ -84,7 +84,7 @@ public struct Catalogue: Equatable, Sendable {
         case "needs_game_data": .needsGameData
         case "needs_app_update": .needsAppUpdate
         case "broken": .broken(reason: e.reason ?? "", detail: e.detail ?? "")
-        case let other: .broken(reason: "", detail: "", technical: "未知状态 \"\(other)\"")
+        case let other: .broken(reason: "", detail: "", technical: L("Unknown state \"\(other)\"", "未知状态 \"\(other)\""))
         }
     }
 
