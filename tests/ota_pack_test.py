@@ -3,7 +3,7 @@
   ② romfs.img 不进 tar、按 img/<路径> 直写，clear_applied = 真；没有镜像时 clear_applied = 假
   ③ ota.json 每个文件 size / sha256 与输出目录里的实物一致，order 连续，index.tsv、manifest.json 排最后且与输入逐字节相同
   ④ 输入目录不被改动；输出目录非空 / 游戏号不对报失败"""
-import hashlib, io, json, re, sys, tarfile, tempfile, unittest
+import hashlib, io, json, re, shutil, subprocess, sys, tarfile, tempfile, unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import ota_pack
@@ -105,6 +105,38 @@ class OtaExport(unittest.TestCase):
         with self.assertRaises(push.Fail): self.run_export()
         self.assertEqual((self.out / "keep").read_text(), "x")
         with self.assertRaises(push.Fail): ota_pack.export(Path(self.td.name) / "nope", Path(self.td.name) / "o2", TID, say=self.log.append)
+
+    def test_device_layout_imports_through_real_gate(self):
+        """⑤ 端到端契约：按 ota.json 的 dest 把文件摆进 Documents/games/<号>/资源包（ios/ota_download.m 落地的样子），
+        跑真 runtime/src/pack_apply.c：只到了 tar（清单没到）时库里不算在机上、闸门等；全到后库里可开始、闸门导入、解开后逐字节 = 资源包"""
+        cc = shutil.which("cc")
+        if not cc: self.skipTest("没有 C 编译器")
+        R = Path(__file__).resolve().parents[1]
+        drv = Path(self.td.name) / "drv"
+        flags = subprocess.run([sys.executable, str(R / "tools/weak_link_decl.py"), "flags", "host"], capture_output=True, text=True).stdout.split()
+        b = subprocess.run([cc, "-O1", "-I" + str(R / "runtime/include"), "-DS2A_UNIT_TEST", "-o", str(drv), str(R / "tests/ota_gate/driver.c"), str(R / "runtime/src/pack_apply.c"), *flags], capture_output=True, text=True)
+        self.assertEqual(b.returncode, 0, b.stderr[-800:])
+        data = self.make(); ota = self.run_export()
+        docs = Path(self.td.name) / "Documents"; root = docs / "games" / TID / "资源包"
+
+        def land(f):
+            d = root / f["dest"]; d.parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(self.out / f["name"], d)
+
+        def drive(*extra):
+            r = subprocess.run([str(drv), str(docs), TID, *extra], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            return dict(l.split("=", 1) for l in r.stdout.splitlines() if "=" in l)
+        for f in ota["files"][:-2]: land(f)   # 下到一半：tar 与镜像落地，index.tsv / manifest.json 还没到
+        mid = drive()
+        self.assertEqual(mid["on_device"], "0")
+        self.assertEqual(mid["gate"], "3,3")   # S2A_GATE_WAIT：清单没到，闸门等、不导入
+        for f in ota["files"][-2:]: land(f)
+        r = drive("apply")
+        self.assertEqual(r["on_device"], "1")
+        self.assertEqual(r["gate"].split(",")[1], "1")   # S2A_GATE_IMPORT（首轮 SETTLE，稳住后导入）
+        self.assertEqual((r["apply"], r["state"], r["quick"]), ("0", "0", "0"))   # 解包成功、就绪、库快判就绪
+        self.assertFalse(list((root / ".incoming").glob("*.tar")))   # 解完即删
+        for k, v in data.items(): self.assertEqual((root / k).read_bytes(), v, k)
 
     def test_cli(self):
         self.make()
