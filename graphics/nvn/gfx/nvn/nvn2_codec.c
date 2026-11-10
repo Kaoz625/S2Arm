@@ -966,16 +966,49 @@ static NVNdevice *ni_get_device(const ni_builder *b) { return b->dev; }
 static uint32_t ni_get_handle(const ni_builder *b) { return b->handle; }
 static int ni_get_perm(const ni_builder *b) { return b->perm; }
 static int ni_get_format(const ni_builder *b) { return b->format; }
+// 不是宿主发的句柄（解码图像池以外的原生图像：摄像头 / GameChat 画面，宿主没有这些服务的画面）照样初始化成功，建纹理时给一张宿主自己的空纹理。
+//   马车世界 1.8.0（11-10）开机就从这类句柄建三张纹理（main+0xd32438），有一张失败就中止：句柄 0 原先在这里回失败 → 2 秒 Break。
+//   参考实现（MIT）dm/gfx/nvn/hle_nvn.c h_ni_init / h_ni_texture 同样不核句柄、给 16x16 空纹理；代码自写
 static int ni_init(ni_image *im, const ni_builder *b) {
     cv_img ci;
-    if (!cv_img_get(b->handle, &ci)) { LOG("【红】Switch 2 视频：nvnNativeImageInitialize 的原生图像句柄 %u 不是宿主发的", b->handle); return 0; }
+    if (!cv_img_get(b->handle, &ci)) { static _Atomic int n; if (atomic_fetch_add(&n, 1) < 4) LOG("Switch 2 视频：nvnNativeImageInitialize 的原生图像句柄 %u 不是宿主发的（摄像头 / GameChat 这类画面，宿主没有）：建纹理时给 16x16 空纹理", b->handle); }
     im->magic = NI_MAGIC; im->handle = b->handle; im->format = b->format; im->dev = b->dev;
+    return 1;
+}
+// 空原生图像：一块宿主自己的 16 KB 全零内存当 CPU 可写池（进程内只登记一次，不释放：纹理可能还留着），16x16 四字节线性纹理建在上面（采样得黑 / 透明）
+#define NI_EMPTY_WH 16u
+#define NI_EMPTY_PITCH 256u
+static pthread_mutex_t g_ni_empty_mu = PTHREAD_MUTEX_INITIALIZER;
+static pool_t g_ni_empty_pool; static int g_ni_empty_on;
+static int ni_texture_empty(NVNtexture *t, const ni_image *im) {
+    pthread_mutex_lock(&g_ni_empty_mu);
+    int reg = 0;
+    if (!g_ni_empty_on) {
+        void *m = NULL; if (posix_memalign(&m, 0x4000, 0x4000)) { pthread_mutex_unlock(&g_ni_empty_mu); LOG("【红】Switch 2 视频：空原生图像的 16 KB 内存分不到"); return 0; }
+        memset(m, 0, 0x4000);
+        pool_t *o = &g_ni_empty_pool; memset(o, 0, sizeof *o);
+        o->magic = MAGIC('P', 'O', 'O', 'L'); o->flags = NVN_MEMORY_POOL_FLAGS_CPU_UNCACHED | NVN_MEMORY_POOL_FLAGS_GPU_CACHED; o->mem = m; o->size = 0x4000;
+        g_ni_empty_on = 1; reg = 1;
+    }
+    pthread_mutex_unlock(&g_ni_empty_mu);
+    if (reg) nvn_be_pool_add(g_ni_empty_pool.mem, g_ni_empty_pool.size);
+    int bw = 0, bh = 0, fmt = nvn_fmt_bpb(im->format, &bw, &bh) == 4 && bw == 1 && bh == 1 ? im->format : NVN_FORMAT_RGBA8;
+    tex_t *o = (tex_t *)t;
+    memset(o, 0, sizeof *o);
+    o->magic = MAGIC('T', 'E', 'X', 0);
+    o->d.target = NVN_TEXTURE_TARGET_2D; o->d.format = fmt; o->d.flags = NVN_TEXTURE_FLAGS_LINEAR;
+    o->d.width = NI_EMPTY_WH; o->d.height = NI_EMPTY_WH; o->d.depth = 1; o->d.levels = 1; o->d.stride = NI_EMPTY_PITCH;
+    o->pool = &g_ni_empty_pool; o->off = 0; o->mem = g_ni_empty_pool.mem;
+    nvn_tex_layout(&o->d, &o->L);
+    o->serial = nvn_new_serial(); nvn_be_tex_init(o);
+    static _Atomic int said; if (atomic_fetch_add(&said, 1) < 4) LOG("Switch 2 视频：原生图像 %u 不是宿主的解码图像 → 16x16 空纹理（格式 %#x）", im->handle, fmt);
     return 1;
 }
 static void ni_fini(ni_image *im) { im->magic = 0; }
 static int ni_texture(NVNtexture *t, const ni_image *im) {
     cv_img ci;
-    if (im->magic != NI_MAGIC || !cv_img_get(im->handle, &ci)) { LOG("【红】Switch 2 视频：nvnTextureInitializeFromNativeImage 的原生图像没初始化 / 句柄已放掉"); return 0; }
+    if (im->magic != NI_MAGIC) { LOG("【红】Switch 2 视频：nvnTextureInitializeFromNativeImage 的原生图像没初始化"); return 0; }
+    if (!cv_img_get(im->handle, &ci)) return ni_texture_empty(t, im);   // 不是宿主发的 / 已放掉的句柄：空纹理（见 ni_init）
     int bw = 0, bh = 0, bpb = nvn_fmt_bpb(im->format, &bw, &bh);
     if (ci.kind == IMG_NV12 || bpb != 4 || bw != 1 || bh != 1) { LOG("【红】Switch 2 视频：原生图像 %u（%s %ux%u）按 NVN 格式 %#x 建纹理，宿主只接四字节一像素的格式", im->handle, ci.kind == IMG_NV12 ? "NV12" : "RGBA", ci.w, ci.h, im->format); return 0; }
     pthread_mutex_lock(&g_img_mu);

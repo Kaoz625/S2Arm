@@ -512,7 +512,24 @@ int main(int argc, char **argv) {
         CHECK(t->d.flags == NVN_TEXTURE_FLAGS_LINEAR && t->d.target == NVN_TEXTURE_TARGET_2D && t->d.width == 1280 && t->d.height == 720 && t->d.stride == 5120 && t->d.format == 0x38);
         CHECK(t->mem == mem && t->pool && t->pool->mem == mem && t->off == 0 && t->serial);
         CHECK(g_pool_adds == a0 + 1 && g_tex_inits == t0 + 2);
-        seth(b, 0xfff0); CHECK(niinit(ni, b) == 0);
+        // 不是宿主发的句柄（马车世界 1.8.0 开机从摄像头 / GameChat 句柄 0 建三张纹理，失败就中止 main+0xd32438）：初始化成功，纹理是宿主的 16x16 空纹理；
+        //   两张共用同一块全零池，池只登记一次；格式不是四字节一像素时换 RGBA8
+        {
+            _Alignas(16) uint8_t ni0[0x200], tx0[0x80], tx1[0x80];
+            int a1 = g_pool_adds, t1 = g_tex_inits;
+            seth(b, 0); CHECK(niinit(ni0, b) == 1);
+            CHECK(tinit(tx0, ni0) == 1);
+            const tex_t *e0 = (const tex_t *)tx0;
+            CHECK(e0->d.width == 16 && e0->d.height == 16 && e0->d.flags == NVN_TEXTURE_FLAGS_LINEAR && e0->d.target == NVN_TEXTURE_TARGET_2D && e0->d.format == 0x38 && e0->d.stride == 256);
+            CHECK(e0->mem && e0->pool && e0->pool->mem == e0->mem && e0->pool->size >= 256u * 16 && e0->serial);
+            int zero = 1; for (int i = 0; i < 256 * 16; i++) zero &= !e0->mem[i];
+            CHECK(zero);
+            seth(b, 0xfff0); setf(b, 0x3); CHECK(niinit(ni0, b) == 1 && tinit(tx1, ni0) == 1);
+            const tex_t *e1 = (const tex_t *)tx1;
+            CHECK(e1->pool == e0->pool && e1->d.format == NVN_FORMAT_RGBA8 && e1->serial != e0->serial);
+            CHECK(g_pool_adds == a1 + 1 && g_tex_inits == t1 + 2);
+            setf(b, 0x38);
+        }
         // NV12 图像不能按四字节格式建纹理
         _Alignas(16) uint8_t pool2[0x20], ni2[0x200]; uint8_t *mem2; uint64_t s2;
         CHECK(((f_psize)E(POOL_SIZE))(&s2, &align, prefnv, 1) == 0 && !posix_memalign((void **)&mem2, (size_t)align, (size_t)s2));
