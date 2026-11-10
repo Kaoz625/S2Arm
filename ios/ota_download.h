@@ -17,3 +17,7 @@ BOOL s2a_ota_open_url(NSURL *url);
 BOOL s2a_ota_background_events(NSString *identifier, void (^completion)(void));
 // app.m 实现：让游戏库重判各款资源包（下载完后刷新「需要游戏数据」→ 可开始）
 void s2a_ota_library_refresh(void);
+// 随包资源包（单款游戏 App，包里 Games/<游戏号>/ota/ = tools/ota_pack.py export 原样）：包里有没有这款的
+BOOL s2a_ota_bundled_available(NSString *gid);
+// 把随包资源包放进 Documents/games/<游戏号>/资源包（APFS 克隆，进度页同下载），放好 done(YES)，失败 / 玩家关掉 done(NO)；done 在主线程。之后照常由导入闸门解开
+void s2a_ota_bundled_install(NSString *gid, void (^done)(BOOL ok));
