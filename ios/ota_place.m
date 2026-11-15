@@ -9,9 +9,9 @@
 #include <unistd.h>
 #import "ota_place.h"
 #include "native.h"
+#include "s2a_docs.h"   // s2a_pack_root：资源包根（v0.3.0 起多款容器挪到 Library/Application Support/S2Arm/games/<号>/资源包）
 
 int s2a_import_state_game_quick(const char *proc_docs, const char *gid);   // runtime/src/pack_apply.c：0 = 就绪
-static NSString *const kPackDir = @"资源包";   // 设备侧资源包目录名（推送契约 / pack_apply.c 同名），不是显示文字
 static const long long kSmall = 64ll << 20;    // 这么大以内的随包文件放完核 sha256；更大的只核大小
 static const long long kSpare = 2ll << 30;     // 要真拷（克隆不成）时另留的空间：解包 tar 用
 
@@ -95,7 +95,8 @@ NSString *s2a_ota_place_bundled(NSString *ota_dir, NSString *game_docs, NSString
     NSArray *fs = [o[@"files"] sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) { return [a[@"order"] compare:b[@"order"]]; }];
     NSString *proc = game_docs.stringByDeletingLastPathComponent.stringByDeletingLastPathComponent;   // game_docs = <进程级 Documents>/games/<游戏号>
     if (s2a_import_state_game_quick(proc.fileSystemRepresentation, gid.uppercaseString.UTF8String) == 0) { LOG("OTA 随包：%s 资源包已就绪，不再放", gid.UTF8String); return nil; }
-    NSString *root = [game_docs stringByAppendingPathComponent:kPackDir], *tmp = [game_docs stringByAppendingPathComponent:@".ota-bundled"];
+    char rootc[2200]; s2a_pack_root(rootc, sizeof rootc, game_docs.fileSystemRepresentation);   // 与宿主 / 电脑端推包同一个取法（s2a_docs.h），不另拼
+    NSString *root = [NSFileManager.defaultManager stringWithFileSystemRepresentation:rootc length:strlen(rootc)], *tmp = [game_docs stringByAppendingPathComponent:@".ota-bundled"];
     NSFileManager *fm = NSFileManager.defaultManager; NSError *e = nil;
     if (![fm createDirectoryAtPath:root withIntermediateDirectories:YES attributes:nil error:&e]) return [NSString stringWithFormat:@"mkdir %@: %@", root, e.localizedDescription];
     // 上次放到一半被杀：manifest.json 是最后放的，它在 = 上次放完了（调用方只在库判「不在 / 不完整」时才调）；不完整时先拿掉，免得放到一半的样子被当成「传完了」
