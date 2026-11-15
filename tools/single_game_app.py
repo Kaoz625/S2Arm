@@ -164,7 +164,7 @@ def build(a):
     out.parent.mkdir(parents=True, exist_ok=True)
     total = ota["total"] + sum(p.stat().st_size for p in kit.rglob("*") if p.is_file())
     fr = free_bytes(out.parent)
-    if fr < total + MARGIN:
+    if not a.app_only and fr < total + MARGIN:
         raise Fail(f"{out.parent} 所在盘剩 {fr >> 30} GB，打这个 IPA 最多要 {total >> 30} GB + 留 {MARGIN >> 30} GB")
     bundle_id = a.bundle_id or f"io.s2arm.games.{gid.lower()}"
     plain, loc = names_for(kit, a.display_name)
@@ -188,6 +188,13 @@ def build(a):
         if a.sign == "adhoc":
             from pack import ship_ext
             ship_ext.sign_app(app, "adhoc", bundle_id, "")
+        if a.app_only:   # --app-only（blz 11-15）：只要组好的 .app（真机测试 devicectl 直接装 / 签名脚本吃 .app），不打几十 GB 的 IPA
+            keep = Path(a.keep_app).expanduser()
+            if os.path.lexists(keep):
+                raise Fail(f"不覆盖已有 --keep-app：{keep}")
+            os.replace(app, keep)
+            print(f"🟢 单款游戏 App（只出 .app）{keep}：游戏 {gid}，包名 {bundle_id}，主屏名 {plain!r}；包里资源包 {len(ota['files'])} 个文件 {ota['total']} 字节（克隆 {nc} 个）")
+            return dict(app=str(keep), bundle_id=bundle_id, display_name=plain, localized=loc, title_id=gid)
         app_bundle.write_ipa(app, out, zip64=True)
         got = verify_ipa(out, gid, ota)
         if a.keep_app:
@@ -210,7 +217,10 @@ def main(argv=None):
     ap.add_argument("--shell", required=True); ap.add_argument("--kit", required=True); ap.add_argument("--ota", required=True); ap.add_argument("--out", required=True)
     ap.add_argument("--display-name"); ap.add_argument("--icon"); ap.add_argument("--bundle-id")
     ap.add_argument("--sign", choices=("none", "adhoc"), default="none"); ap.add_argument("--keep-app")
+    ap.add_argument("--app-only", action="store_true", help="只出 .app（要 --keep-app），不打 IPA")
     a = ap.parse_args(argv)
+    if a.app_only and not a.keep_app:
+        ap.error("--app-only 要配 --keep-app")
     try:
         build(a); return 0
     except (Fail, app_bundle.BundleError, RuntimeError, OSError) as e:
