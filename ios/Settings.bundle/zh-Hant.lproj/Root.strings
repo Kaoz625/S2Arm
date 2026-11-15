@@ -36,3 +36,8 @@
 "Build ID" = "包號";
 "Unknown (shown after opening a game once)" = "未知（開啟一次遊戲後顯示）";
 "Other settings are inside S2Arm: the gear at the top right of the library, or the gear at the top left in a game. Only what you may need when the app won’t open is kept here." = "其餘設定都在 S2Arm 裡：遊戲庫右上角的齒輪，或遊戲裡左上角的齒輪。這裡只留 App 打不開時可能要改的幾項。";
+
+/* OTA 无线下载（blz fork）：繁中沿用简中原文 */
+"Wireless Download" = "无线下载";
+"Download game data over HTTPS when you are away from your Mac. Paste the catalog link (https://…) or open an s2arm://download link; in the game library, a game that is missing its data then offers Download." = "不在 Mac 旁边时经 HTTPS 下载游戏资源。粘贴下载目录链接（https://…），或打开 s2arm://download 链接；之后游戏库里缺资源的游戏会多一个「下载」。";
+"Catalog URL" = "下载目录链接";

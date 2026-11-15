@@ -60,7 +60,7 @@ def clone(src, dst):
 class LocalDev:
     """push_pack 的设备接口落到本地目录：只收 send() 用到的 put / put_big / put_tar / nospc / why。
     put_tar 直接借 push_pack.Devicectl.put_tar 的退路（tarfile PAX、uid/gid 0、按 push.lst 顺序），与推到手机上的 tar 同一段代码"""
-    kind = "ota"; docs = DOCS; ctx = None; why = "OTA 导出（本地目录）"; dp = None
+    kind = "ota"; docs = DOCS; pack = None; ctx = None; why = "OTA 导出（本地目录）"; dp = None   # pack：上游 push_pack.rp 认 dev.pack（--pack-root），None = 按文档根
     put_tar = push.Devicectl.put_tar
     say = staticmethod(lambda m: None)
 
@@ -79,6 +79,10 @@ class LocalDev:
         r = self._rel(rel)
         if r == ".pushed":   # 推送记账（中断续推用），OTA 端自己记进度，不下发
             return
+        if r == ".transfer":   # 传输清单（上游 11-1x：手机游戏库按它画装机蒙版）：只给推送进度用，OTA / 随包不下发
+            return
+        if r == "manifest.json" and Path(src).name == "manifest_pending":   # 开推先置空清单（上游 11-09）：OTA 端清单本来就最后落地，不下发空的
+            return
         if r == ".applied":   # send() 写直写镜像前把 .applied 清空：设备侧照做
             self.clear_applied = True; return
         if r.startswith(".incoming/"):
@@ -96,6 +100,9 @@ class LocalDev:
         self.puts.append((r, name))
 
     put_big = put
+
+    def head(self, rel, n):   # push_pack 读机上 game.img 头核长度 / 续传：本地目录设备不续传，按「读不到」处理（整份写）
+        return None
 
     def nospc(self):
         return False

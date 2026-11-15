@@ -164,8 +164,9 @@ static void job_save(void) { if (g_job) write_json(job_url(), g_job); else [NSFi
 static NSArray *job_files(void) { return g_job[@"ota"][@"files"]; }
 static NSString *part_dir(void) { return [game_docs(g_job[@"gid"]) stringByAppendingPathComponent:@".ota"]; }
 static NSString *part_path(NSUInteger i) { return [part_dir() stringByAppendingPathComponent:[NSString stringWithFormat:@"%lu.part", (unsigned long)i]]; }
-static NSString *const kPackDir = @"资源包";   // 设备侧资源包目录名（推送契约 / pack_apply.c 同名），不是显示文字
-static NSString *pack_root(void) { return [game_docs(g_job[@"gid"]) stringByAppendingPathComponent:kPackDir]; }
+static NSString *pack_root(void) {   // 同宿主 / 推包的唯一取法 s2a_pack_root（v0.3.0 起多款容器的资源包在 Library/Application Support/S2Arm/games/<号>/资源包）
+    char r[2200]; s2a_pack_root(r, sizeof r, game_docs(g_job[@"gid"]).fileSystemRepresentation);
+    return [NSFileManager.defaultManager stringWithFileSystemRepresentation:r length:strlen(r)]; }
 static void ensure_session(void) {
     if (g_bg) return;
     g_q = [NSOperationQueue new]; g_q.maxConcurrentOperationCount = 1; g_q.name = @"s2a.ota";

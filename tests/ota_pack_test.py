@@ -117,7 +117,7 @@ class OtaExport(unittest.TestCase):
         b = subprocess.run([cc, "-O1", "-I" + str(R / "runtime/include"), "-DS2A_UNIT_TEST", "-o", str(drv), str(R / "tests/ota_gate/driver.c"), str(R / "runtime/src/pack_apply.c"), *flags], capture_output=True, text=True)
         self.assertEqual(b.returncode, 0, b.stderr[-800:])
         data = self.make(); ota = self.run_export()
-        docs = Path(self.td.name) / "Documents"; root = docs / "games" / TID / "资源包"
+        docs = Path(self.td.name) / "Documents"; root = Path(self.td.name) / "Library" / "Application Support" / "S2Arm" / "games" / TID / "资源包"   # s2a_pack_root（v0.3.0 起挪出 Documents）
 
         def land(f):
             d = root / f["dest"]; d.parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(self.out / f["name"], d)
@@ -129,7 +129,7 @@ class OtaExport(unittest.TestCase):
         for f in ota["files"][:-2]: land(f)   # 下到一半：tar 与镜像落地，index.tsv / manifest.json 还没到
         mid = drive()
         self.assertEqual(mid["on_device"], "0")
-        self.assertEqual(mid["gate"], "3,3")   # S2A_GATE_WAIT：清单没到，闸门等、不导入
+        self.assertEqual(mid["gate"], "2,2")   # S2A_GATE_WAIT（上游 11-1x 枚举多了 STALLED 前移：WAIT = 2）：清单没到，闸门等、不导入
         for f in ota["files"][-2:]: land(f)
         r = drive("apply")
         self.assertEqual(r["on_device"], "1")

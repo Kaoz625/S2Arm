@@ -4,7 +4,7 @@
 #include "../../runtime/src/native.h"
 #include <stdio.h>
 int s2a_pack_apply(const char *docs); int s2a_import_state(const char *docs);
-int s2a_game_on_device(const char *proc_docs, const char *gid); int s2a_import_state_game_quick(const char *proc_docs, const char *gid);
+int s2a_game_install_state(const char *proc_docs, const char *gid); static int s2a_game_on_device(const char *d, const char *g) { int st = s2a_game_install_state(d, g); return st == 1 || st == 2; } int s2a_import_state_game_quick(const char *proc_docs, const char *gid);
 struct s2a_gate_watch { int n, moved; uint64_t fp; time_t changed; };   // 同 pack_apply.c
 int s2a_import_decide(const char *docs, struct s2a_gate_watch *w, time_t now, char *why, size_t n);
 uint64_t now_ns(void) { return 0; }

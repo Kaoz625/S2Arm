@@ -39,7 +39,7 @@ class Bundled(unittest.TestCase):
         self.data = mk.make()
         self.ota_dir = d / "S2Arm.app" / "Games" / TID / "ota"   # 单款游戏 App 包里的位置
         self.ota = ota_pack.export(mk.pk, self.ota_dir, TID, say=lambda m: None)
-        self.docs = d / "Documents"; self.root = self.docs / "games" / TID / PACK
+        self.docs = d / "Documents"; self.root = d / "Library" / "Application Support" / "S2Arm" / "games" / TID / PACK   # s2a_pack_root（v0.3.0 起资源包挪出 Documents）
 
     def tearDown(self):
         push.LIM = self.lim0; self.td.cleanup()
@@ -96,7 +96,7 @@ class Bundled(unittest.TestCase):
         self.assertFalse((self.root / "manifest.json").exists())
         mid = self.gate()
         self.assertEqual(mid["on_device"], "0")
-        self.assertEqual(mid["gate"], "3,3")   # S2A_GATE_WAIT：清单没到，不导入
+        self.assertEqual(mid["gate"], "2,2")   # S2A_GATE_WAIT（上游 11-1x 枚举：WAIT = 2）：清单没到，不导入
         tars = [f for f in self.ota["files"] if f["dest"].startswith(".incoming/")]
         (self.root / tars[-1]["dest"]).write_bytes(b"half")   # 半截落点（大小不对）
         tmp = self.docs / "games" / TID / ".ota-bundled"; tmp.mkdir(exist_ok=True); (tmp / "placing.tmp").write_bytes(b"junk")
