@@ -32,8 +32,8 @@ SRCS = ['ios/diagzip.m', 'ios/ea_rumble.m', 'ios/extdisplay.m', 'ios/input_confi
         'ios/vpad.m', 'ios/vpad_settings.m', 'ios/vpad_layout.m', 'ios/vpad_cheats.m', 'ios/cheats_parse.m', 'ios/vpad_shell.m', 'ios/cpatch_settings.m', 'ios/cpatch_model.m',
         'ios/app.m', 'ios/app_settings.m', 'ios/controller.m', 'ios/diag.m', 'ios/diagredact.m', 'ios/dprompt.m', 'ios/hud.m', 'ios/iml_probe.m',
         'ios/lan_permission.m', 'ios/ldn_lan.m', 'ios/loadpage.m', 'ios/notice.m', 'ios/phone_motion.m', 'ios/save_transfer.m', 'ios/settings.m',
-        'ios/textinput.m', 'ios/touch_config.m', 'ios/game_options.m', 'ios/sgrade_style.m', 'ios/sgrade_line.m']
-        'ios/textinput.m', 'ios/touch_config.m', 'ios/game_options.m', 'ios/sgrade_style.m', 'ios/ota_download.m', 'ios/ota_place.m']   # blz fork：OTA 下载 / 随包资源包
+        'ios/textinput.m', 'ios/touch_config.m', 'ios/game_options.m', 'ios/sgrade_style.m', 'ios/sgrade_line.m',
+        'ios/ota_download.m', 'ios/ota_place.m']   # blz fork：OTA 下载 / 随包资源包
 # 语言按目录自己找（11-13 加繁中 zh-Hant，维护者「任何一种语言缺键就报红」）：ios/l10n/<语言>.lproj 每一种都要有两张表；en 是基准（开发区域），别的语言逐项与 en 比
 LANGS = sorted(d.name[:-len('.lproj')] for d in (H / 'ios/l10n').glob('*.lproj'))
 TABLES = {l: f'ios/l10n/{l}.lproj/S2ArmHost.strings' for l in LANGS}

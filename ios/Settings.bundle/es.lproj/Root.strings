@@ -36,3 +36,6 @@
 "Build ID" = "ID de compilación";
 "Unknown (shown after opening a game once)" = "Desconocido (se muestra después de abrir un juego una vez)";
 "Other settings are inside S2Arm: the gear at the top right of the library, or the gear at the top left in a game. Only what you may need when the app won’t open is kept here." = "Los demás ajustes están dentro de S2Arm: el engranaje en la parte superior derecha de la biblioteca, o el engranaje en la parte superior izquierda en un juego. Aquí solo se mantiene lo que puedas necesitar cuando la app no se abra.";
+"Catalog URL" = "Catalog URL";
+"Wireless Download" = "Wireless Download";
+"Download game data over HTTPS when you are away from your Mac. Paste the catalog link (https://…) or open an s2arm://download link; in the game library, a game that is missing its data then offers Download." = "Download game data over HTTPS when you are away from your Mac. Paste the catalog link (https://…) or open an s2arm://download link; in the game library, a game that is missing its data then offers Download.";
